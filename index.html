@@ -102,6 +102,8 @@
   .spinner{width:38px;height:38px;border:5px solid var(--border);border-top-color:var(--accent);
     border-radius:50%;animation:spin 0.8s linear infinite;margin:30px auto;}
   @keyframes spin{to{transform:rotate(360deg);}}
+  .btn-spinner{display:inline-block;width:16px;height:16px;border:3px solid rgba(255,255,255,.4);
+    border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px;}
   .member-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);}
   .member-row:last-child{border-bottom:none;}
   .member-rank{font-size:18px;font-weight:800;color:var(--muted);width:26px;flex-shrink:0;}
@@ -427,10 +429,21 @@ document.getElementById('submitActivity').addEventListener('click', async ()=>{
   if(!date || !distance || !fileInput.files[0]){
     showToast('กรุณากรอกข้อมูลให้ครบ'); return;
   }
+  const btn = document.getElementById('submitActivity');
+  const originalLabel = btn.innerHTML;
+  const setLoading = (on) => {
+    btn.disabled = on;
+    btn.style.opacity = on ? '0.7' : '1';
+    btn.innerHTML = on
+      ? '<span class="btn-spinner"></span> กำลังส่ง...'
+      : originalLabel;
+  };
+
   const file = fileInput.files[0];
   const reader = new FileReader();
   reader.onload = async function(){
     const base64 = reader.result.split(',')[1];
+    setLoading(true);
     try{
       await callApi('apiAddActivity', {
         lineUserId: currentUser.lineUserId,
@@ -445,6 +458,7 @@ document.getElementById('submitActivity').addEventListener('click', async ()=>{
       fileInput.value = '';
       switchView('pending');
     }catch(e){ showToast('ส่งไม่สำเร็จ: ' + e.message); }
+    finally{ setLoading(false); }
   };
   reader.readAsDataURL(file);
 });
@@ -551,21 +565,31 @@ function openPendingDetail(id){
   }
 
   if(a.canApprove){
-    document.getElementById('modalApproveBtn').addEventListener('click', async ()=>{
+    const approveBtn = document.getElementById('modalApproveBtn');
+    const rejectBtn = document.getElementById('modalRejectBtn');
+    const setBtnsLoading = (on) => {
+      approveBtn.disabled = on; rejectBtn.disabled = on;
+      approveBtn.style.opacity = rejectBtn.style.opacity = on ? '0.6' : '1';
+    };
+    approveBtn.addEventListener('click', async ()=>{
+      setBtnsLoading(true);
+      approveBtn.innerHTML = '<span class="btn-spinner"></span> กำลังบันทึก...';
       try{
         await callApi('apiApproveActivity', {lineUserId: currentUser.lineUserId, activityId: id});
         showToast('อนุมัติแล้ว');
         modal.classList.remove('show');
         loadPending();
-      }catch(err){ showToast('ไม่สำเร็จ: ' + err.message); }
+      }catch(err){ showToast('ไม่สำเร็จ: ' + err.message); setBtnsLoading(false); approveBtn.innerHTML = '✅ อนุมัติ'; }
     });
-    document.getElementById('modalRejectBtn').addEventListener('click', async ()=>{
+    rejectBtn.addEventListener('click', async ()=>{
+      setBtnsLoading(true);
+      rejectBtn.innerHTML = '<span class="btn-spinner"></span> กำลังบันทึก...';
       try{
         await callApi('apiRejectActivity', {lineUserId: currentUser.lineUserId, activityId: id});
         showToast('ปฏิเสธแล้ว');
         modal.classList.remove('show');
         loadPending();
-      }catch(err){ showToast('ไม่สำเร็จ: ' + err.message); }
+      }catch(err){ showToast('ไม่สำเร็จ: ' + err.message); setBtnsLoading(false); rejectBtn.innerHTML = '✖ ไม่อนุมัติ'; }
     });
   }
 }
