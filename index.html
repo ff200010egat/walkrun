@@ -82,6 +82,9 @@
   .meta{font-size:15px;color:var(--muted);font-weight:600;}
   .empty{text-align:center;color:var(--muted);padding:50px 0;font-size:18px;}
   .rank{font-size:28px;font-weight:800;width:36px;}
+  .medal-rank{font-size:26px;width:36px;display:inline-block;}
+  .progress-track{width:100%;height:14px;background:#eef6fa;border-radius:999px;margin-top:12px;overflow:hidden;}
+  .progress-fill{height:100%;border-radius:999px;transition:width 1s cubic-bezier(.22,1,.36,1);}
   .score{font-size:24px;font-weight:800;color:var(--accent-dark);}
   .toast{position:fixed;top:18px;left:50%;transform:translateX(-50%);background:#1a2b3c;color:#fff;
     padding:14px 20px;border-radius:14px;font-size:17px;z-index:50;display:none;font-weight:600;
@@ -343,23 +346,59 @@ function renderUserLine(){
 }
 
 
+const MEDAL = ['🥇','🥈','🥉','🎖️'];
+const COLOR_BG = {
+  'แดง': 'linear-gradient(135deg, #fff0f0, #fff)',
+  'เหลือง': 'linear-gradient(135deg, #fffbe8, #fff)',
+  'เขียว': 'linear-gradient(135deg, #eefcf3, #fff)',
+  'น้ำเงิน': 'linear-gradient(135deg, #eaf6ff, #fff)'
+};
+const COLOR_BAR = {
+  'แดง': 'var(--red)', 'เหลือง': 'var(--yellow)', 'เขียว': 'var(--green)', 'น้ำเงิน': 'var(--blue)'
+};
+
 async function loadScoreboard(){
   const el = document.getElementById('scoreboard');
   el.innerHTML = '<div class="empty">กำลังโหลด...</div>';
   try{
     const data = await callApi('apiScoreboard', {});
     document.getElementById('periodText').textContent = '1–27 ส.ค. 2026';
-    el.innerHTML = data.board.map((b,i)=>`
-      <div class="card row between color-row" data-color="${b.color}" style="cursor:pointer;">
-        <div class="row"><span class="rank">${i+1}</span>
-          <span class="dot ${b.color}"></span>&nbsp;<b>${b.color}</b></div>
-        <div class="row" style="gap:10px;">
-          <div class="score">${(b.totalMeters/1000).toFixed(2)} กม.</div>
-          <span style="color:var(--muted);font-size:20px;">›</span>
+    const leaderMeters = data.board.length ? data.board[0].totalMeters : 0;
+    const maxMeters = Math.max(leaderMeters, 1); // กันหารด้วยศูนย์
+
+    el.innerHTML = data.board.map((b,i)=>{
+      const pct = Math.max(3, Math.round((b.totalMeters / maxMeters) * 100));
+      const gap = leaderMeters - b.totalMeters;
+      const gapText = i === 0
+        ? '🔥 กำลังนำอยู่!'
+        : `ตามหลังผู้นำ ${(gap/1000).toFixed(2)} กม.`;
+      return `
+      <div class="card color-row" data-color="${b.color}" style="cursor:pointer;background:${COLOR_BG[b.color]};">
+        <div class="row between">
+          <div class="row"><span class="rank medal-rank">${MEDAL[i] || (i+1)}</span>
+            <span class="dot ${b.color}"></span>&nbsp;<b>${b.color}</b></div>
+          <div class="row" style="gap:10px;">
+            <div class="score">${(b.totalMeters/1000).toFixed(2)} กม.</div>
+            <span style="color:var(--muted);font-size:20px;">›</span>
+          </div>
         </div>
-      </div>`).join('');
+        <div class="progress-track">
+          <div class="progress-fill" data-pct="${pct}" style="width:0%;background:${COLOR_BAR[b.color]};"></div>
+        </div>
+        <div class="meta" style="margin-top:6px;">${gapText}</div>
+      </div>`;
+    }).join('');
+
     el.querySelectorAll('.color-row').forEach(row=>{
       row.addEventListener('click', ()=> openColorDetail(row.dataset.color));
+    });
+    // หน่วงเล็กน้อยแล้วค่อยขยายแถบ ให้เห็น animation วิ่งเข้ามา
+    requestAnimationFrame(()=>{
+      setTimeout(()=>{
+        el.querySelectorAll('.progress-fill').forEach(bar=>{
+          bar.style.width = bar.dataset.pct + '%';
+        });
+      }, 50);
     });
   }catch(e){ el.innerHTML = '<div class="empty">โหลดไม่สำเร็จ</div>'; }
 
