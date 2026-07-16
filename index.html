@@ -78,6 +78,7 @@
   .view.active{display:block;}
   .thumb{width:100%;border-radius:14px;margin-top:12px;max-height:280px;object-fit:cover;border:3px solid var(--border);}
   .thumb.thumb-fallback{max-width:120px;max-height:120px;object-fit:contain;background:#f4fbff;padding:10px;}
+  .thumb-history{width:76px;height:76px;border-radius:12px;object-fit:cover;border:2px solid var(--border);flex-shrink:0;}
   .meta{font-size:15px;color:var(--muted);font-weight:600;}
   .empty{text-align:center;color:var(--muted);padding:50px 0;font-size:18px;}
   .rank{font-size:28px;font-weight:800;width:36px;}
@@ -594,16 +595,29 @@ async function loadHistory(){
   try{
     const list = await callApi('apiMyActivities', {lineUserId: currentUser.lineUserId});
     if(list.length === 0){ el.innerHTML = '<div class="empty">ยังไม่มีกิจกรรม</div>'; return; }
-    el.innerHTML = list.map(a => `
+    el.innerHTML = list.map(a => {
+      const imgSrc = normalizeDriveImageUrl(a.imageUrl);
+      return `
       <div class="card">
         <div class="row between">
           <b>${new Date(a.activityDate).toLocaleDateString('th-TH')}</b>
           <span class="status-tag ${a.status}">${a.status === 'approved' ? 'อนุมัติแล้ว' : a.status === 'rejected' ? 'ไม่อนุมัติ' : 'รอตรวจสอบ'}</span>
         </div>
-        <div style="margin-top:6px;"><b>${a.distanceMeters} ม.</b></div>
-        ${!a.willCount ? `<div class="not-counted">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>` : ''}
-        <img class="thumb" src="${normalizeDriveImageUrl(a.imageUrl)}" onerror="this.onerror=null; this.src='${currentUser.pictureUrl || ''}'; this.classList.add('thumb-fallback');">
-      </div>`).join('');
+        <div class="row between" style="margin-top:6px;align-items:flex-start;">
+          <div>
+            <b>${a.distanceMeters} ม.</b>
+            ${!a.willCount ? `<div class="not-counted" style="margin-top:8px;">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>` : ''}
+          </div>
+          ${imgSrc ? `<img class="thumb-history" src="${imgSrc}" style="cursor:zoom-in;" onclick="openLightbox('${imgSrc}')" onerror="this.style.display='none';">` : ''}
+        </div>
+        ${a.status === 'approved' ? `
+          <div class="row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+            <span class="meta">อนุมัติโดย</span>
+            ${a.approvedByPicture ? `<img class="avatar-sm" src="${a.approvedByPicture}">` : ''}
+            <b style="font-size:15px;">${a.approvedByName || '-'}</b>
+          </div>` : ''}
+      </div>`;
+    }).join('');
   }catch(e){ el.innerHTML = '<div class="empty">โหลดไม่สำเร็จ</div>'; }
 }
 
