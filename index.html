@@ -104,6 +104,13 @@
   .member-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);}
   .member-row:last-child{border-bottom:none;}
   .member-rank{font-size:18px;font-weight:800;color:var(--muted);width:26px;flex-shrink:0;}
+  .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:60;display:none;
+    align-items:center;justify-content:center;padding:20px;}
+  .lightbox.show{display:flex;}
+  .lightbox img{max-width:100%;max-height:80vh;border-radius:10px;object-fit:contain;}
+  .lightbox-close{position:absolute;top:20px;right:20px;width:44px;height:44px;border-radius:50%;
+    background:#fff;color:#1a2b3c;font-size:22px;font-weight:800;border:none;
+    display:flex;align-items:center;justify-content:center;}
 </style>
 </head>
 <body>
@@ -217,6 +224,12 @@
     <div id="pendingDetailBody"><div class="spinner"></div></div>
     <button class="modal-close" id="closePendingDetail" style="background:transparent;color:var(--muted);border:2px solid var(--border);">ปิด</button>
   </div>
+</div>
+
+<!-- IMAGE LIGHTBOX (full-size zoom) -->
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="closeLightbox">✕</button>
+  <img id="lightboxImg" src="">
 </div>
 
 <div class="tabbar">
@@ -494,10 +507,14 @@ function openPendingDetail(id){
     </div>
     <div style="margin-top:8px;font-size:22px;"><b>${a.distanceMeters} ม.</b></div>
     ${!a.willCount ? `<div class="not-counted">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>` : ''}
-    <div class="spinner" id="pendingImgSpinner"></div>
-    <img class="thumb" id="pendingDetailImg" style="display:none;" src="${a.imageUrl}"
-      onload="document.getElementById('pendingImgSpinner').style.display='none'; this.style.display='block';"
-      onerror="this.onerror=null; document.getElementById('pendingImgSpinner').style.display='none'; this.src='${a.pictureUrl || ''}'; this.classList.add('thumb-fallback'); this.style.display='block';">
+    <div id="pendingImgArea">
+      ${a.imageUrl ? `
+        <div class="spinner" id="pendingImgSpinner"></div>
+        <img class="thumb" id="pendingDetailImg" style="display:none;cursor:zoom-in;" src="${a.imageUrl}">
+        <div class="hint" id="pendingImgHint" style="display:none;text-align:center;">🔍 แตะที่รูปเพื่อดูขนาดเต็ม</div>
+        <div class="not-counted" id="pendingImgError" style="background:#ffe6e6;color:#c93c3c;margin-top:12px;display:none;">⚠️ ไม่อัพโหลดรูปหลักฐาน แนะนำ ไม่อนุมัติ</div>
+      ` : `<div class="not-counted" style="background:#ffe6e6;color:#c93c3c;margin-top:12px;display:block;">⚠️ ไม่อัพโหลดรูปหลักฐาน แนะนำ ไม่อนุมัติ</div>`}
+    </div>
     ${a.canApprove ? `
       <div class="row" style="margin-top:16px;gap:8px;">
         <button class="btn-approve btn-sm" id="modalApproveBtn" style="flex:1;">✅ อนุมัติ</button>
@@ -505,6 +522,21 @@ function openPendingDetail(id){
       </div>` : `<div class="meta" style="margin-top:12px;">คุณไม่สามารถอนุมัติกิจกรรมสีเดียวกับตนเองได้</div>`}
   `;
   modal.classList.add('show');
+
+  const img = document.getElementById('pendingDetailImg');
+  if(img){
+    img.addEventListener('load', ()=>{
+      document.getElementById('pendingImgSpinner').style.display = 'none';
+      img.style.display = 'block';
+      document.getElementById('pendingImgHint').style.display = 'block';
+    });
+    img.addEventListener('error', ()=>{
+      document.getElementById('pendingImgSpinner').style.display = 'none';
+      img.remove();
+      document.getElementById('pendingImgError').style.display = 'block';
+    });
+    img.addEventListener('click', ()=> openLightbox(img.src));
+  }
 
   if(a.canApprove){
     document.getElementById('modalApproveBtn').addEventListener('click', async ()=>{
@@ -525,6 +557,18 @@ function openPendingDetail(id){
     });
   }
 }
+
+function openLightbox(src){
+  const lb = document.getElementById('lightbox');
+  document.getElementById('lightboxImg').src = src;
+  lb.classList.add('show');
+}
+document.getElementById('closeLightbox').addEventListener('click', ()=>{
+  document.getElementById('lightbox').classList.remove('show');
+});
+document.getElementById('lightbox').addEventListener('click', (e)=>{
+  if(e.target.id === 'lightbox') e.target.classList.remove('show');
+});
 
 document.getElementById('closePendingDetail').addEventListener('click', ()=>{
   document.getElementById('pendingDetailModal').classList.remove('show');
