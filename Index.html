@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>Walk Challenge</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root{
+    --bg:#fafafa; --card:#fff; --text:#1a1a1a; --muted:#767676;
+    --border:#e5e5e5; --accent:#2b2b2b; --radius:14px;
+    --red:#e05252; --yellow:#e0b02b; --green:#3f9d55; --blue:#3f7fe0;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans Thai",sans-serif;
+    background:var(--bg);color:var(--text);padding-bottom:72px;}
+  header{padding:16px 16px 8px;position:sticky;top:0;background:var(--bg);z-index:5;}
+  header h1{font-size:18px;margin:0 0 2px;}
+  header .sub{font-size:12px;color:var(--muted);}
+  .container{padding:0 16px;max-width:520px;margin:0 auto;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    padding:16px;margin-bottom:12px;}
+  .row{display:flex;align-items:center;gap:10px;}
+  .between{justify-content:space-between;}
+  .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;color:#fff;font-weight:600;}
+  .badge.แดง{background:var(--red);} .badge.เหลือง{background:var(--yellow);color:#3a2c00;}
+  .badge.เขียว{background:var(--green);} .badge.น้ำเงิน{background:var(--blue);}
+  .dot{width:10px;height:10px;border-radius:50%;display:inline-block;}
+  .dot.แดง{background:var(--red);} .dot.เหลือง{background:var(--yellow);}
+  .dot.เขียว{background:var(--green);} .dot.น้ำเงิน{background:var(--blue);}
+  input[type=date], input[type=number], input[type=file]{
+    width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;
+    font-size:15px;background:#fff;margin-top:4px;}
+  label{font-size:13px;color:var(--muted);display:block;margin-top:12px;}
+  button{border:none;border-radius:10px;padding:12px 16px;font-size:15px;font-weight:600;
+    cursor:pointer;}
+  .btn-primary{background:var(--accent);color:#fff;width:100%;margin-top:16px;}
+  .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text);}
+  .btn-approve{background:var(--green);color:#fff;}
+  .btn-reject{background:var(--red);color:#fff;}
+  .btn-sm{padding:8px 12px;font-size:13px;border-radius:8px;}
+  .color-pick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;}
+  .color-pick button{padding:16px;border-radius:12px;font-size:15px;}
+  .color-pick .แดง{background:var(--red);color:#fff;}
+  .color-pick .เหลือง{background:var(--yellow);color:#3a2c00;}
+  .color-pick .เขียว{background:var(--green);color:#fff;}
+  .color-pick .น้ำเงิน{background:var(--blue);color:#fff;}
+  .tabbar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--border);
+    display:flex;z-index:10;}
+  .tabbar button{flex:1;background:transparent;border-radius:0;padding:10px 4px;font-size:11px;
+    color:var(--muted);font-weight:500;}
+  .tabbar button.active{color:var(--text);font-weight:700;}
+  .tab-icon{font-size:18px;display:block;margin-bottom:2px;}
+  .view{display:none;}
+  .view.active{display:block;}
+  .thumb{width:100%;border-radius:10px;margin-top:10px;max-height:220px;object-fit:cover;}
+  .meta{font-size:12px;color:var(--muted);}
+  .empty{text-align:center;color:var(--muted);padding:40px 0;font-size:14px;}
+  .rank{font-size:22px;font-weight:700;width:28px;}
+  .score{font-size:20px;font-weight:700;}
+  .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#222;color:#fff;
+    padding:10px 16px;border-radius:10px;font-size:13px;z-index:50;display:none;}
+  .status-tag{font-size:11px;padding:2px 8px;border-radius:999px;background:#eee;color:var(--muted);}
+  .status-tag.approved{background:#e4f5e8;color:#2a7a3d;}
+  .status-tag.rejected{background:#fbe6e6;color:#c23b3b;}
+  .status-tag.pending{background:#fff4de;color:#a8760d;}
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+
+<header>
+  <h1>🏃 Walk Challenge</h1>
+  <div class="sub" id="userLine">กำลังโหลด...</div>
+</header>
+
+<div class="container">
+
+  <!-- HOME / SCOREBOARD -->
+  <div class="view active" id="view-home">
+    <div class="card">
+      <div class="row between"><b>สรุประยะสะสมทีม</b><span class="meta" id="periodText"></span></div>
+    </div>
+    <div id="scoreboard"></div>
+  </div>
+
+  <!-- ADD ACTIVITY -->
+  <div class="view" id="view-add">
+    <div class="card">
+      <b>บันทึกกิจกรรม</b>
+      <label>วันที่ทำกิจกรรม</label>
+      <input type="date" id="actDate">
+      <label>ระยะที่ได้ (เมตร)</label>
+      <input type="number" id="actDistance" placeholder="เช่น 3200">
+      <label>แนบภาพประกอบจากอุปกรณ์</label>
+      <input type="file" id="actImage" accept="image/*" capture="environment">
+      <button class="btn-primary" id="submitActivity">ส่งกิจกรรม</button>
+    </div>
+  </div>
+
+  <!-- PENDING APPROVAL -->
+  <div class="view" id="view-pending">
+    <div id="pendingList"></div>
+  </div>
+
+  <!-- MY HISTORY -->
+  <div class="view" id="view-history">
+    <div id="historyList"></div>
+  </div>
+
+  <!-- ADMIN -->
+  <div class="view" id="view-admin">
+    <div class="card"><b>จัดการสีผู้ใช้ (Admin)</b></div>
+    <div id="adminList"></div>
+  </div>
+
+</div>
+
+<!-- COLOR PICK MODAL (first login) -->
+<div class="view" id="view-colorpick" style="position:fixed;inset:0;background:var(--bg);z-index:20;padding:24px;">
+  <div class="card">
+    <b>เลือกสีทีมของคุณ</b>
+    <div class="meta">เลือกได้ครั้งเดียว หากต้องการเปลี่ยนภายหลังต้องแจ้งแอดมิน</div>
+    <div class="color-pick">
+      <button class="แดง" data-color="แดง">แดง</button>
+      <button class="เหลือง" data-color="เหลือง">เหลือง</button>
+      <button class="เขียว" data-color="เขียว">เขียว</button>
+      <button class="น้ำเงิน" data-color="น้ำเงิน">น้ำเงิน</button>
+    </div>
+  </div>
+</div>
+
+<div class="tabbar">
+  <button data-view="home" class="tab-btn active"><span class="tab-icon">🏆</span>สรุปคะแนน</button>
+  <button data-view="add" class="tab-btn"><span class="tab-icon">➕</span>เพิ่มกิจกรรม</button>
+  <button data-view="pending" class="tab-btn"><span class="tab-icon">🕒</span>รอตรวจสอบ</button>
+  <button data-view="history" class="tab-btn"><span class="tab-icon">📋</span>ของฉัน</button>
+  <button data-view="admin" class="tab-btn" id="adminTabBtn" style="display:none;"><span class="tab-icon">⚙️</span>Admin</button>
+</div>
+
+<script>
+// ตั้งค่า 2 บรรทัดนี้ให้ตรงกับของคุณ:
+const LIFF_ID = "2010724958-KTUm5Swh"; // LIFF ID จาก LINE Developers Console
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxwNXdrYdkc1JoS7IV2KyMdiFqN_-XIeDaggpu3DpeFp8Z04Z0rHhqxR5Z-qsGrOnydxg/exec"; // Web app URL จาก Deploy
+
+let currentUser = null;
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(()=> t.style.display='none', 2200);
+}
+
+// หน้านี้เป็นหน้าเว็บทั่วไป (โฮสต์นอก GAS) จึงใช้ fetch ยิงไปที่ GAS Web App ตรงๆ ได้
+function callApi(fnName, params){
+  const actionMap = {
+    apiGetOrCreateUser: 'getOrCreateUser',
+    apiSetColor: 'setColor',
+    apiAdminSetColor: 'adminSetColor',
+    apiAddActivity: 'addActivity',
+    apiListPending: 'listPending',
+    apiApproveActivity: 'approveActivity',
+    apiRejectActivity: 'rejectActivity',
+    apiMyActivities: 'myActivities',
+    apiScoreboard: 'scoreboard',
+    apiAdminListUsers: 'adminListUsers'
+  };
+  const action = actionMap[fnName] || fnName;
+  return fetch(SCRIPT_URL, {
+    method: 'POST',
+    body: JSON.stringify(Object.assign({ action }, params))
+  }).then(r => r.json()).then(res => {
+    if(!res.ok){ throw new Error(res.error || 'error'); }
+    return res.data;
+  });
+}
+
+function switchView(name){
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+  if(name === 'home') loadScoreboard();
+  if(name === 'pending') loadPending();
+  if(name === 'history') loadHistory();
+  if(name === 'admin') loadAdmin();
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=> switchView(btn.dataset.view));
+});
+
+document.querySelectorAll('#view-colorpick .color-pick button').forEach(btn=>{
+  btn.addEventListener('click', async ()=>{
+    try{
+      await callApi('apiSetColor', {lineUserId: currentUser.lineUserId, color: btn.dataset.color});
+      currentUser.color = btn.dataset.color;
+      document.getElementById('view-colorpick').style.display = 'none';
+      renderUserLine();
+      switchView('home');
+    }catch(e){ showToast('เลือกสีไม่สำเร็จ: ' + e.message); }
+  });
+});
+
+function renderUserLine(){
+  const el = document.getElementById('userLine');
+  el.innerHTML = currentUser.displayName +
+    (currentUser.color ? ` <span class="badge ${currentUser.color}">${currentUser.color}</span>` : '');
+  if(currentUser.isAdmin) document.getElementById('adminTabBtn').style.display = '';
+}
+
+async function loadScoreboard(){
+  const el = document.getElementById('scoreboard');
+  el.innerHTML = '<div class="empty">กำลังโหลด...</div>';
+  try{
+    const data = await callApi('apiScoreboard', {});
+    document.getElementById('periodText').textContent = '1–27 ส.ค. 2026';
+    el.innerHTML = data.board.map((b,i)=>`
+      <div class="card row between">
+        <div class="row"><span class="rank">${i+1}</span>
+          <span class="dot ${b.color}"></span>&nbsp;<b>${b.color}</b></div>
+        <div class="score">${(b.totalMeters/1000).toFixed(2)} กม.</div>
+      </div>`).join('');
+  }catch(e){ el.innerHTML = '<div class="empty">โหลดไม่สำเร็จ</div>'; }
+}
+
+document.getElementById('submitActivity').addEventListener('click', async ()=>{
+  const date = document.getElementById('actDate').value;
+  const distance = document.getElementById('actDistance').value;
+  const fileInput = document.getElementById('actImage');
+  if(!date || !distance || !fileInput.files[0]){
+    showToast('กรุณากรอกข้อมูลให้ครบ'); return;
+  }
+  const file = fileInput.files[0];
+  const reader = new FileReader();
+  reader.onload = async function(){
+    const base64 = reader.result.split(',')[1];
+    try{
+      await callApi('apiAddActivity', {
+        lineUserId: currentUser.lineUserId,
+        activityDate: date,
+        distanceMeters: distance,
+        imageBase64: base64,
+        imageMimeType: file.type || 'image/jpeg'
+      });
+      showToast('ส่งกิจกรรมสำเร็จ รอตรวจสอบ');
+      document.getElementById('actDate').value = '';
+      document.getElementById('actDistance').value = '';
+      fileInput.value = '';
+      switchView('pending');
+    }catch(e){ showToast('ส่งไม่สำเร็จ: ' + e.message); }
+  };
+  reader.readAsDataURL(file);
+});
+
+async function loadPending(){
+  const el = document.getElementById('pendingList');
+  el.innerHTML = '<div class="empty">กำลังโหลด...</div>';
+  try{
+    const list = await callApi('apiListPending', {lineUserId: currentUser.lineUserId});
+    if(list.length === 0){ el.innerHTML = '<div class="empty">ไม่มีกิจกรรมรอตรวจสอบ</div>'; return; }
+    el.innerHTML = list.map(a => `
+      <div class="card" data-id="${a.id}">
+        <div class="row between">
+          <div class="row"><span class="dot ${a.color}"></span>&nbsp;<b>${a.displayName}</b></div>
+          <span class="meta">${new Date(a.activityDate).toLocaleDateString('th-TH')}</span>
+        </div>
+        <div style="margin-top:6px;"><b>${a.distanceMeters} ม.</b></div>
+        <img class="thumb" src="${a.imageUrl}">
+        ${a.canApprove ? `
+          <div class="row" style="margin-top:12px;gap:8px;">
+            <button class="btn-approve btn-sm approve-btn">✅ อนุมัติ</button>
+            <button class="btn-reject btn-sm reject-btn">✖ ไม่อนุมัติ</button>
+          </div>` : `<div class="meta" style="margin-top:8px;">คุณไม่สามารถอนุมัติกิจกรรมสีเดียวกับตนเองได้</div>`}
+      </div>`).join('');
+
+    el.querySelectorAll('.approve-btn').forEach(btn=>{
+      btn.addEventListener('click', async (e)=>{
+        const id = e.target.closest('.card').dataset.id;
+        try{ await callApi('apiApproveActivity', {lineUserId: currentUser.lineUserId, activityId: id});
+          showToast('อนุมัติแล้ว'); loadPending(); }
+        catch(err){ showToast('ไม่สำเร็จ: ' + err.message); }
+      });
+    });
+    el.querySelectorAll('.reject-btn').forEach(btn=>{
+      btn.addEventListener('click', async (e)=>{
+        const id = e.target.closest('.card').dataset.id;
+        try{ await callApi('apiRejectActivity', {lineUserId: currentUser.lineUserId, activityId: id});
+          showToast('ปฏิเสธแล้ว'); loadPending(); }
+        catch(err){ showToast('ไม่สำเร็จ: ' + err.message); }
+      });
+    });
+  }catch(e){ el.innerHTML = '<div class="empty">โหลดไม่สำเร็จ</div>'; }
+}
+
+async function loadHistory(){
+  const el = document.getElementById('historyList');
+  el.innerHTML = '<div class="empty">กำลังโหลด...</div>';
+  try{
+    const list = await callApi('apiMyActivities', {lineUserId: currentUser.lineUserId});
+    if(list.length === 0){ el.innerHTML = '<div class="empty">ยังไม่มีกิจกรรม</div>'; return; }
+    el.innerHTML = list.map(a => `
+      <div class="card">
+        <div class="row between">
+          <b>${new Date(a.activityDate).toLocaleDateString('th-TH')}</b>
+          <span class="status-tag ${a.status}">${a.status === 'approved' ? 'อนุมัติแล้ว' : a.status === 'rejected' ? 'ไม่อนุมัติ' : 'รอตรวจสอบ'}</span>
+        </div>
+        <div style="margin-top:6px;"><b>${a.distanceMeters} ม.</b></div>
+        <img class="thumb" src="${a.imageUrl}">
+      </div>`).join('');
+  }catch(e){ el.innerHTML = '<div class="empty">โหลดไม่สำเร็จ</div>'; }
+}
+
+async function loadAdmin(){
+  const el = document.getElementById('adminList');
+  el.innerHTML = '<div class="empty">กำลังโหลด...</div>';
+  try{
+    const users = await callApi('apiAdminListUsers', {adminLineUserId: currentUser.lineUserId});
+    el.innerHTML = users.map(u => `
+      <div class="card row between" data-uid="${u.lineUserId}">
+        <div>${u.displayName}<div class="meta">${u.color || 'ยังไม่เลือกสี'}</div></div>
+        <select class="colorSelect">
+          <option value="">--</option>
+          <option value="แดง" ${u.color==='แดง'?'selected':''}>แดง</option>
+          <option value="เหลือง" ${u.color==='เหลือง'?'selected':''}>เหลือง</option>
+          <option value="เขียว" ${u.color==='เขียว'?'selected':''}>เขียว</option>
+          <option value="น้ำเงิน" ${u.color==='น้ำเงิน'?'selected':''}>น้ำเงิน</option>
+        </select>
+      </div>`).join('');
+    el.querySelectorAll('.colorSelect').forEach(sel=>{
+      sel.addEventListener('change', async (e)=>{
+        const uid = e.target.closest('.card').dataset.uid;
+        const color = e.target.value;
+        if(!color) return;
+        try{
+          await callApi('apiAdminSetColor', {adminLineUserId: currentUser.lineUserId, targetLineUserId: uid, color});
+          showToast('เปลี่ยนสีแล้ว');
+        }catch(err){ showToast('ไม่สำเร็จ: ' + err.message); }
+      });
+    });
+  }catch(e){ el.innerHTML = '<div class="empty">โหลดไม่สำเร็จ / ไม่มีสิทธิ์</div>'; }
+}
+
+function setDebug(msg){
+  document.getElementById('userLine').textContent = msg;
+}
+
+function withTimeout(promise, ms, label){
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout: ' + label + ' ค้างเกิน ' + (ms/1000) + ' วิ')), ms))
+  ]);
+}
+
+async function init(){
+  setDebug('กำลังโหลด... (1/4 liff.init)');
+  await withTimeout(liff.init({ liffId: LIFF_ID }), 15000, 'liff.init');
+
+  setDebug('กำลังโหลด... (2/4 เช็คสถานะ login)');
+  if(!liff.isLoggedIn()){
+    setDebug('กำลังพาไปหน้า login...');
+    liff.login();
+    return;
+  }
+
+  setDebug('กำลังโหลด... (3/4 ดึงโปรไฟล์ LINE)');
+  const profile = await withTimeout(liff.getProfile(), 15000, 'liff.getProfile');
+
+  setDebug('กำลังโหลด... (4/4 บันทึกผู้ใช้)');
+  const data = await withTimeout(callApi('apiGetOrCreateUser', {
+    lineUserId: profile.userId,
+    displayName: profile.displayName,
+    pictureUrl: profile.pictureUrl
+  }), 20000, 'apiGetOrCreateUser');
+
+  currentUser = data;
+  renderUserLine();
+
+  if(!currentUser.color){
+    document.getElementById('view-colorpick').style.display = 'block';
+  }
+  loadScoreboard();
+}
+
+init().catch(err=>{
+  setDebug('เกิดข้อผิดพลาด: ' + (err && err.message ? err.message : String(err)));
+});
+</script>
+
+</body>
+</html>
