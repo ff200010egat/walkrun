@@ -210,6 +210,15 @@
   </div>
 </div>
 
+<!-- PENDING ACTIVITY DETAIL MODAL -->
+<div class="modal-overlay" id="pendingDetailModal">
+  <div class="modal-box">
+    <h2>📋 รายละเอียดกิจกรรม</h2>
+    <div id="pendingDetailBody"><div class="spinner"></div></div>
+    <button class="modal-close" id="closePendingDetail" style="background:transparent;color:var(--muted);border:2px solid var(--border);">ปิด</button>
+  </div>
+</div>
+
 <div class="tabbar">
   <button data-view="home" class="tab-btn active"><span class="tab-icon">🏆</span>สรุปคะแนน</button>
   <button data-view="add" class="tab-btn"><span class="tab-icon">➕</span>เพิ่มกิจกรรม</button>
@@ -433,47 +442,96 @@ async function refreshPendingCount(){
   }catch(e){ /* เงียบไว้ ไม่กระทบการใช้งานหลัก */ }
 }
 
+let pendingCache = {};
+
 async function loadPending(){
   const el = document.getElementById('pendingList');
   el.innerHTML = '<div class="empty">กำลังโหลด...</div>';
   try{
     const list = await callApi('apiListPending', {lineUserId: currentUser.lineUserId});
     setPendingBadge(list.length);
+    pendingCache = {};
+    list.forEach(a => { pendingCache[a.id] = a; });
     if(list.length === 0){ el.innerHTML = '<div class="empty">ไม่มีกิจกรรมรอตรวจสอบ</div>'; return; }
     el.innerHTML = list.map(a => `
-      <div class="card" data-id="${a.id}">
+      <div class="card pending-row" data-id="${a.id}" style="cursor:pointer;padding:14px 16px;">
         <div class="row between">
-          <div class="row">${a.pictureUrl ? `<img class="avatar-sm" src="${a.pictureUrl}">` : ''}<span class="dot ${a.color}"></span>&nbsp;<b>${a.displayName}</b>${a.color === 'ขาว' ? ' <span class="badge ขาว" style="font-size:13px;padding:2px 10px;">กรรมการ</span>' : ''}</div>
-          <span class="meta">${new Date(a.activityDate).toLocaleDateString('th-TH')}</span>
+          <div class="row" style="min-width:0;">
+            ${a.pictureUrl ? `<img class="avatar-sm" src="${a.pictureUrl}">` : ''}
+            <span class="dot ${a.color}"></span>
+            <b style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${a.displayName}</b>
+            ${a.color === 'ขาว' ? ' <span class="badge ขาว" style="font-size:12px;padding:2px 8px;flex-shrink:0;">กรรมการ</span>' : ''}
+          </div>
+          <span style="color:var(--muted);font-size:20px;flex-shrink:0;">›</span>
         </div>
-        <div style="margin-top:6px;"><b>${a.distanceMeters} ม.</b></div>
-        ${!a.willCount ? `<div class="not-counted">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>` : ''}
-        <img class="thumb" src="${a.imageUrl}" onerror="this.onerror=null; this.src='${a.pictureUrl || ''}'; this.classList.add('thumb-fallback');">
-        ${a.canApprove ? `
-          <div class="row" style="margin-top:12px;gap:8px;">
-            <button class="btn-approve btn-sm approve-btn">✅ อนุมัติ</button>
-            <button class="btn-reject btn-sm reject-btn">✖ ไม่อนุมัติ</button>
-          </div>` : `<div class="meta" style="margin-top:8px;">คุณไม่สามารถอนุมัติกิจกรรมสีเดียวกับตนเองได้</div>`}
+        <div class="row between" style="margin-top:6px;">
+          <span class="meta">${new Date(a.activityDate).toLocaleDateString('th-TH')}</span>
+          <b>${a.distanceMeters} ม.</b>
+        </div>
+        ${!a.willCount ? `<div class="not-counted" style="margin-top:8px;">⚠️ นอกช่วงแข่งขัน</div>` : ''}
       </div>`).join('');
 
-    el.querySelectorAll('.approve-btn').forEach(btn=>{
-      btn.addEventListener('click', async (e)=>{
-        const id = e.target.closest('.card').dataset.id;
-        try{ await callApi('apiApproveActivity', {lineUserId: currentUser.lineUserId, activityId: id});
-          showToast('อนุมัติแล้ว'); loadPending(); }
-        catch(err){ showToast('ไม่สำเร็จ: ' + err.message); }
-      });
-    });
-    el.querySelectorAll('.reject-btn').forEach(btn=>{
-      btn.addEventListener('click', async (e)=>{
-        const id = e.target.closest('.card').dataset.id;
-        try{ await callApi('apiRejectActivity', {lineUserId: currentUser.lineUserId, activityId: id});
-          showToast('ปฏิเสธแล้ว'); loadPending(); }
-        catch(err){ showToast('ไม่สำเร็จ: ' + err.message); }
-      });
+    el.querySelectorAll('.pending-row').forEach(row=>{
+      row.addEventListener('click', ()=> openPendingDetail(row.dataset.id));
     });
   }catch(e){ el.innerHTML = '<div class="empty">โหลดไม่สำเร็จ</div>'; }
 }
+
+function openPendingDetail(id){
+  const a = pendingCache[id];
+  if(!a) return;
+  const modal = document.getElementById('pendingDetailModal');
+  const body = document.getElementById('pendingDetailBody');
+  modal.dataset.activityId = id;
+  body.innerHTML = `
+    <div class="row between">
+      <div class="row">
+        ${a.pictureUrl ? `<img class="avatar-sm" src="${a.pictureUrl}">` : ''}
+        <span class="dot ${a.color}"></span>&nbsp;<b>${a.displayName}</b>
+        ${a.color === 'ขาว' ? ' <span class="badge ขาว" style="font-size:13px;padding:2px 10px;">กรรมการ</span>' : ''}
+      </div>
+      <span class="meta">${new Date(a.activityDate).toLocaleDateString('th-TH')}</span>
+    </div>
+    <div style="margin-top:8px;font-size:22px;"><b>${a.distanceMeters} ม.</b></div>
+    ${!a.willCount ? `<div class="not-counted">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>` : ''}
+    <div class="spinner" id="pendingImgSpinner"></div>
+    <img class="thumb" id="pendingDetailImg" style="display:none;" src="${a.imageUrl}"
+      onload="document.getElementById('pendingImgSpinner').style.display='none'; this.style.display='block';"
+      onerror="this.onerror=null; document.getElementById('pendingImgSpinner').style.display='none'; this.src='${a.pictureUrl || ''}'; this.classList.add('thumb-fallback'); this.style.display='block';">
+    ${a.canApprove ? `
+      <div class="row" style="margin-top:16px;gap:8px;">
+        <button class="btn-approve btn-sm" id="modalApproveBtn" style="flex:1;">✅ อนุมัติ</button>
+        <button class="btn-reject btn-sm" id="modalRejectBtn" style="flex:1;">✖ ไม่อนุมัติ</button>
+      </div>` : `<div class="meta" style="margin-top:12px;">คุณไม่สามารถอนุมัติกิจกรรมสีเดียวกับตนเองได้</div>`}
+  `;
+  modal.classList.add('show');
+
+  if(a.canApprove){
+    document.getElementById('modalApproveBtn').addEventListener('click', async ()=>{
+      try{
+        await callApi('apiApproveActivity', {lineUserId: currentUser.lineUserId, activityId: id});
+        showToast('อนุมัติแล้ว');
+        modal.classList.remove('show');
+        loadPending();
+      }catch(err){ showToast('ไม่สำเร็จ: ' + err.message); }
+    });
+    document.getElementById('modalRejectBtn').addEventListener('click', async ()=>{
+      try{
+        await callApi('apiRejectActivity', {lineUserId: currentUser.lineUserId, activityId: id});
+        showToast('ปฏิเสธแล้ว');
+        modal.classList.remove('show');
+        loadPending();
+      }catch(err){ showToast('ไม่สำเร็จ: ' + err.message); }
+    });
+  }
+}
+
+document.getElementById('closePendingDetail').addEventListener('click', ()=>{
+  document.getElementById('pendingDetailModal').classList.remove('show');
+});
+document.getElementById('pendingDetailModal').addEventListener('click', (e)=>{
+  if(e.target.id === 'pendingDetailModal') e.target.classList.remove('show');
+});
 
 async function loadHistory(){
   const el = document.getElementById('historyList');
