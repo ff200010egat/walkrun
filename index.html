@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<title>Walk Challenge</title>
+<title>Run-Walk Challenge</title>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -69,10 +69,15 @@
   .tabbar button{flex:1;background:transparent;border-radius:0;padding:12px 4px;font-size:14px;
     color:var(--muted);font-weight:700;}
   .tabbar button.active{color:var(--accent-dark);}
-  .tab-icon{font-size:26px;display:block;margin-bottom:3px;}
+  .tab-icon{font-size:26px;display:block;margin-bottom:3px;position:relative;}
+  .tab-icon-wrap{position:relative;display:inline-block;}
+  .tab-badge{position:absolute;top:-4px;right:-10px;background:var(--dora-red);color:#fff;
+    font-size:12px;font-weight:800;border-radius:999px;min-width:20px;height:20px;line-height:20px;
+    text-align:center;padding:0 4px;border:2px solid #fff;display:none;}
   .view{display:none;}
   .view.active{display:block;}
   .thumb{width:100%;border-radius:14px;margin-top:12px;max-height:280px;object-fit:cover;border:3px solid var(--border);}
+  .thumb.thumb-fallback{max-width:120px;max-height:120px;object-fit:contain;background:#f4fbff;padding:10px;}
   .meta{font-size:15px;color:var(--muted);font-weight:600;}
   .empty{text-align:center;color:var(--muted);padding:50px 0;font-size:18px;}
   .rank{font-size:28px;font-weight:800;width:36px;}
@@ -93,6 +98,12 @@
   .modal-box ul{padding-left:22px;margin:0 0 6px;}
   .modal-box li{margin-bottom:12px;font-size:17px;line-height:1.5;}
   .modal-close{width:100%;margin-top:14px;background:var(--accent);color:#fff;}
+  .spinner{width:38px;height:38px;border:5px solid var(--border);border-top-color:var(--accent);
+    border-radius:50%;animation:spin 0.8s linear infinite;margin:30px auto;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .member-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);}
+  .member-row:last-child{border-bottom:none;}
+  .member-rank{font-size:18px;font-weight:800;color:var(--muted);width:26px;flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -101,7 +112,7 @@
 
 <header>
   <div class="titleWrap">
-    <h1>🔔 Walk Challenge</h1>
+    <h1>🔔 Run-Walk Challenge</h1>
     <div class="row" style="gap:8px;">
       <img id="userAvatar" class="avatar" style="display:none;">
       <div class="sub" id="userLine">กำลังโหลด...</div>
@@ -190,10 +201,19 @@
   </div>
 </div>
 
+<!-- COLOR DETAIL MODAL -->
+<div class="modal-overlay" id="colorDetailModal">
+  <div class="modal-box">
+    <h2 id="colorDetailTitle">รายละเอียด</h2>
+    <div id="colorDetailBody"><div class="spinner"></div></div>
+    <button class="modal-close" id="closeColorDetail">ปิด</button>
+  </div>
+</div>
+
 <div class="tabbar">
   <button data-view="home" class="tab-btn active"><span class="tab-icon">🏆</span>สรุปคะแนน</button>
   <button data-view="add" class="tab-btn"><span class="tab-icon">➕</span>เพิ่มกิจกรรม</button>
-  <button data-view="pending" class="tab-btn"><span class="tab-icon">🕒</span>รอตรวจสอบ</button>
+  <button data-view="pending" class="tab-btn"><span class="tab-icon-wrap"><span class="tab-icon">🕒</span><span class="tab-badge" id="pendingBadge">0</span></span>รอตรวจสอบ</button>
   <button data-view="history" class="tab-btn"><span class="tab-icon">📋</span>ของฉัน</button>
   <button data-view="admin" class="tab-btn" id="adminTabBtn" style="display:none;"><span class="tab-icon">⚙️</span>Admin</button>
 </div>
@@ -223,8 +243,10 @@ function callApi(fnName, params){
     apiApproveActivity: 'approveActivity',
     apiRejectActivity: 'rejectActivity',
     apiMyActivities: 'myActivities',
+    apiMyTotalMeters: 'myTotalMeters',
     apiScoreboard: 'scoreboard',
-    apiAdminListUsers: 'adminListUsers'
+    apiAdminListUsers: 'adminListUsers',
+    apiColorDetail: 'colorDetail'
   };
   const action = actionMap[fnName] || fnName;
   return fetch(SCRIPT_URL, {
@@ -273,8 +295,12 @@ function renderUserLine(){
     avatarHeader.style.display = 'inline-block';
   }
   const el = document.getElementById('userLine');
+  const totalText = (currentUser.color && currentUser.color !== 'ขาว')
+    ? ` · ระยะสะสม ${Math.round(currentUser.totalMeters || 0)} ม.`
+    : '';
   el.innerHTML = currentUser.displayName +
-    (currentUser.color ? ` <span class="badge ${currentUser.color}">${colorLabel(currentUser.color)}</span>` : '');
+    (currentUser.color ? ` <span class="badge ${currentUser.color}">${colorLabel(currentUser.color)}</span>` : '') +
+    totalText;
   if(currentUser.isAdmin) document.getElementById('adminTabBtn').style.display = '';
 }
 
@@ -286,12 +312,27 @@ async function loadScoreboard(){
     const data = await callApi('apiScoreboard', {});
     document.getElementById('periodText').textContent = '1–27 ส.ค. 2026';
     el.innerHTML = data.board.map((b,i)=>`
-      <div class="card row between">
+      <div class="card row between color-row" data-color="${b.color}" style="cursor:pointer;">
         <div class="row"><span class="rank">${i+1}</span>
           <span class="dot ${b.color}"></span>&nbsp;<b>${b.color}</b></div>
-        <div class="score">${(b.totalMeters/1000).toFixed(2)} กม.</div>
+        <div class="row" style="gap:10px;">
+          <div class="score">${(b.totalMeters/1000).toFixed(2)} กม.</div>
+          <span style="color:var(--muted);font-size:20px;">›</span>
+        </div>
       </div>`).join('');
+    el.querySelectorAll('.color-row').forEach(row=>{
+      row.addEventListener('click', ()=> openColorDetail(row.dataset.color));
+    });
   }catch(e){ el.innerHTML = '<div class="empty">โหลดไม่สำเร็จ</div>'; }
+
+  // รีเฟรชระยะสะสมส่วนตัวด้วย เผื่อมีการอนุมัติกิจกรรมใหม่ระหว่างนี้
+  if(currentUser){
+    try{
+      const t = await callApi('apiMyTotalMeters', {lineUserId: currentUser.lineUserId});
+      currentUser.totalMeters = t.totalMeters;
+      renderUserLine();
+    }catch(e){ /* เงียบไว้ ไม่กระทบการใช้งานหลัก */ }
+  }
 }
 
 document.getElementById('helpBtn').addEventListener('click', ()=>{
@@ -302,6 +343,37 @@ document.getElementById('closeRules').addEventListener('click', ()=>{
 });
 document.getElementById('rulesModal').addEventListener('click', (e)=>{
   if(e.target.id === 'rulesModal') e.target.classList.remove('show');
+});
+
+async function openColorDetail(color){
+  const modal = document.getElementById('colorDetailModal');
+  const body = document.getElementById('colorDetailBody');
+  document.getElementById('colorDetailTitle').textContent = '🏅 รายบุคคลสี' + color;
+  body.innerHTML = '<div class="spinner"></div>';
+  modal.classList.add('show');
+  try{
+    const data = await callApi('apiColorDetail', { color });
+    if(data.members.length === 0){
+      body.innerHTML = '<div class="empty">ยังไม่มีสมาชิกในสีนี้</div>';
+      return;
+    }
+    body.innerHTML = data.members.map((m,i) => `
+      <div class="member-row">
+        <div class="member-rank">${i+1}</div>
+        ${m.pictureUrl ? `<img class="avatar-sm" src="${m.pictureUrl}">` : ''}
+        <div style="flex:1;">${m.displayName}</div>
+        <b>${(m.totalMeters/1000).toFixed(2)} กม.</b>
+      </div>`).join('');
+  }catch(e){
+    body.innerHTML = '<div class="empty">โหลดไม่สำเร็จ</div>';
+  }
+}
+
+document.getElementById('closeColorDetail').addEventListener('click', ()=>{
+  document.getElementById('colorDetailModal').classList.remove('show');
+});
+document.getElementById('colorDetailModal').addEventListener('click', (e)=>{
+  if(e.target.id === 'colorDetailModal') e.target.classList.remove('show');
 });
 
 document.getElementById('actDistance').addEventListener('input', (e)=>{
@@ -343,11 +415,30 @@ document.getElementById('submitActivity').addEventListener('click', async ()=>{
   reader.readAsDataURL(file);
 });
 
+function setPendingBadge(count){
+  const badge = document.getElementById('pendingBadge');
+  if(count > 0){
+    badge.textContent = count > 99 ? '99+' : count;
+    badge.style.display = 'block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+async function refreshPendingCount(){
+  if(!currentUser) return;
+  try{
+    const list = await callApi('apiListPending', {lineUserId: currentUser.lineUserId});
+    setPendingBadge(list.length);
+  }catch(e){ /* เงียบไว้ ไม่กระทบการใช้งานหลัก */ }
+}
+
 async function loadPending(){
   const el = document.getElementById('pendingList');
   el.innerHTML = '<div class="empty">กำลังโหลด...</div>';
   try{
     const list = await callApi('apiListPending', {lineUserId: currentUser.lineUserId});
+    setPendingBadge(list.length);
     if(list.length === 0){ el.innerHTML = '<div class="empty">ไม่มีกิจกรรมรอตรวจสอบ</div>'; return; }
     el.innerHTML = list.map(a => `
       <div class="card" data-id="${a.id}">
@@ -357,7 +448,7 @@ async function loadPending(){
         </div>
         <div style="margin-top:6px;"><b>${a.distanceMeters} ม.</b></div>
         ${!a.willCount ? `<div class="not-counted">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>` : ''}
-        <img class="thumb" src="${a.imageUrl}">
+        <img class="thumb" src="${a.imageUrl}" onerror="this.onerror=null; this.src='${a.pictureUrl || ''}'; this.classList.add('thumb-fallback');">
         ${a.canApprove ? `
           <div class="row" style="margin-top:12px;gap:8px;">
             <button class="btn-approve btn-sm approve-btn">✅ อนุมัติ</button>
@@ -398,7 +489,7 @@ async function loadHistory(){
         </div>
         <div style="margin-top:6px;"><b>${a.distanceMeters} ม.</b></div>
         ${!a.willCount ? `<div class="not-counted">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>` : ''}
-        <img class="thumb" src="${a.imageUrl}">
+        <img class="thumb" src="${a.imageUrl}" onerror="this.onerror=null; this.src='${currentUser.pictureUrl || ''}'; this.classList.add('thumb-fallback');">
       </div>`).join('');
   }catch(e){ el.innerHTML = '<div class="empty">โหลดไม่สำเร็จ</div>'; }
 }
@@ -473,6 +564,7 @@ async function init(){
     document.getElementById('view-colorpick').style.display = 'block';
   }
   loadScoreboard();
+  refreshPendingCount();
 }
 
 init().catch(err=>{
