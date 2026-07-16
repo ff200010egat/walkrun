@@ -247,6 +247,17 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxwNXdrYdkc1JoS7IV2K
 
 let currentUser = null;
 
+// แปลง URL ของ Google Drive รูปแบบไหนก็ได้ (view page, uc?id=, thumbnail, ฯลฯ)
+// ให้เป็น URL รูปภาพที่ฝังใน <img> ได้จริงเสมอ — กันปัญหาข้อมูลเก่าที่เก็บ URL รูปแบบเดิมไว้
+function normalizeDriveImageUrl(url){
+  if(!url) return '';
+  const match = url.match(/[-\w]{25,}/); // Drive file ID มักยาว 25+ ตัวอักษร
+  if(match){
+    return 'https://drive.google.com/thumbnail?id=' + match[0] + '&sz=w1200';
+  }
+  return url;
+}
+
 function showToast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -510,7 +521,7 @@ function openPendingDetail(id){
     <div id="pendingImgArea">
       ${a.imageUrl ? `
         <div class="spinner" id="pendingImgSpinner"></div>
-        <img class="thumb" id="pendingDetailImg" style="display:none;cursor:zoom-in;" src="${a.imageUrl}">
+        <img class="thumb" id="pendingDetailImg" style="display:none;cursor:zoom-in;" src="${normalizeDriveImageUrl(a.imageUrl)}">
         <div class="hint" id="pendingImgHint" style="display:none;text-align:center;">🔍 แตะที่รูปเพื่อดูขนาดเต็ม</div>
         <div class="not-counted" id="pendingImgError" style="background:#ffe6e6;color:#c93c3c;margin-top:12px;display:none;">⚠️ ไม่อัพโหลดรูปหลักฐาน แนะนำ ไม่อนุมัติ</div>
       ` : `<div class="not-counted" style="background:#ffe6e6;color:#c93c3c;margin-top:12px;display:block;">⚠️ ไม่อัพโหลดรูปหลักฐาน แนะนำ ไม่อนุมัติ</div>`}
@@ -591,7 +602,7 @@ async function loadHistory(){
         </div>
         <div style="margin-top:6px;"><b>${a.distanceMeters} ม.</b></div>
         ${!a.willCount ? `<div class="not-counted">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>` : ''}
-        <img class="thumb" src="${a.imageUrl}" onerror="this.onerror=null; this.src='${currentUser.pictureUrl || ''}'; this.classList.add('thumb-fallback');">
+        <img class="thumb" src="${normalizeDriveImageUrl(a.imageUrl)}" onerror="this.onerror=null; this.src='${currentUser.pictureUrl || ''}'; this.classList.add('thumb-fallback');">
       </div>`).join('');
   }catch(e){ el.innerHTML = '<div class="empty">โหลดไม่สำเร็จ</div>'; }
 }
