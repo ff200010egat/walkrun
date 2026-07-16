@@ -147,9 +147,11 @@
       <b>📝 บันทึกกิจกรรม</b>
       <label>วันที่ทำกิจกรรม</label>
       <input type="date" id="actDate">
-      <label>ระยะที่ได้ (เมตร)</label>
+      <div class="row between" style="margin-top:18px;">
+        <label style="margin-top:0;">ระยะที่ได้ (เมตร)</label>
+        <div class="km-preview" id="kmPreview" style="margin-top:0;"></div>
+      </div>
       <input type="number" id="actDistance" placeholder="เช่น 3200" inputmode="numeric">
-      <div class="km-preview" id="kmPreview"></div>
       <label>แนบภาพประกอบ</label>
       <div class="hint">แคปหน้าจอผลจากแอปอุปกรณ์ของคุณ เช่น Garmin, Coros, Suunto, Apple Watch หรือแอปวิ่ง/เดินอื่นๆ แล้วเลือกรูปจากคลังภาพ</div>
       <input type="file" id="actImage" accept="image/*">
@@ -204,8 +206,8 @@
       <li>สมาชิกคนอื่น (ยกเว้นคนในสีเดียวกัน) สามารถกด <b>อนุมัติ/ไม่อนุมัติ</b> กิจกรรมได้ เพื่อความโปร่งใสและยุติธรรม</li>
       <li>คะแนนรวมของทีมจะนับเฉพาะกิจกรรมที่ <b>อนุมัติแล้ว</b> เท่านั้น</li>
       <li>ระยะเวลาการแข่งขัน: <b>1 – 27 สิงหาคม 2026</b> — กิจกรรมที่ทำนอกช่วงนี้จะไม่ถูกนับคะแนน แม้จะส่งและอนุมัติได้ตามปกติ</li>
-      <li>มีบทบาท <b>กรรมการ (สีขาว)</b> สำหรับเข้าดูและช่วยตรวจสอบกิจกรรม </li>
-      <li>เลือกสีทีมได้เพียงครั้งเดียว หากเลือกสีผิดต้องแจ้งแอดมิน</li>
+      <li>มีบทบาท <b>กรรมการ (สีขาว)</b> สำหรับเข้าดูและช่วยตรวจสอบกิจกรรม โดยผลของกรรมการจะไม่ถูกนำมารวมแข่งกับ 4 สีหลัก</li>
+      <li>เลือกสีทีมได้เพียงครั้งเดียว หากต้องการเปลี่ยนสีต้องแจ้งแอดมิน</li>
     </ul>
     <button class="modal-close" id="closeRules">เข้าใจแล้ว</button>
   </div>
