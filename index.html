@@ -630,8 +630,11 @@ async function loadAdmin(){
         const color = e.target.value;
         if(!color) return;
         try{
-          await callApi('apiAdminSetColor', {adminLineUserId: currentUser.lineUserId, targetLineUserId: uid, color});
-          showToast('เปลี่ยนสีแล้ว');
+          const result = await callApi('apiAdminSetColor', {adminLineUserId: currentUser.lineUserId, targetLineUserId: uid, color});
+          const extra = result.updatedActivityCount > 0
+            ? ` (ปรับกิจกรรมเก่า ${result.updatedActivityCount} รายการให้เป็นสีนี้ด้วย)`
+            : '';
+          showToast('เปลี่ยนสีแล้ว' + extra);
         }catch(err){ showToast('ไม่สำเร็จ: ' + err.message); }
       });
     });
