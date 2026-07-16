@@ -34,9 +34,13 @@
   .badge{display:inline-block;padding:5px 14px;border-radius:999px;font-size:16px;color:#fff;font-weight:700;}
   .badge.แดง{background:var(--red);} .badge.เหลือง{background:var(--yellow);color:#5a4600;}
   .badge.เขียว{background:var(--green);} .badge.น้ำเงิน{background:var(--blue);}
+  .badge.ขาว{background:#fff;color:#5b7a8c;border:2px solid #cdeaf7;}
   .dot{width:14px;height:14px;border-radius:50%;display:inline-block;flex-shrink:0;}
   .dot.แดง{background:var(--red);} .dot.เหลือง{background:var(--yellow);}
   .dot.เขียว{background:var(--green);} .dot.น้ำเงิน{background:var(--blue);}
+  .dot.ขาว{background:#fff;border:2px solid #b9c9d1;}
+  .not-counted{font-size:14px;color:#c9860d;font-weight:700;background:#fff6dc;
+    padding:6px 12px;border-radius:10px;margin-top:10px;display:inline-block;}
   input[type=date], input[type=number], input[type=file]{
     width:100%;padding:16px 14px;border:3px solid var(--border);border-radius:14px;
     font-size:19px;background:#fff;margin-top:6px;font-family:inherit;color:var(--text);}
@@ -148,7 +152,7 @@
 <!-- COLOR PICK MODAL (first login) -->
 <div class="view" id="view-colorpick" style="position:fixed;inset:0;background:var(--bg);z-index:20;padding:24px;">
   <div class="card">
-    <b>เลือกสีทีมของคุณ</b>
+    <b>เลือกทีม/บทบาทของคุณ</b>
     <div class="meta">เลือกได้ครั้งเดียว หากต้องการเปลี่ยนภายหลังต้องแจ้งแอดมิน</div>
     <div class="color-pick">
       <button class="แดง" data-color="แดง">แดง</button>
@@ -156,6 +160,10 @@
       <button class="เขียว" data-color="เขียว">เขียว</button>
       <button class="น้ำเงิน" data-color="น้ำเงิน">น้ำเงิน</button>
     </div>
+    <button class="ขาว" data-color="ขาว" style="width:100%;margin-top:14px;padding:20px;border-radius:16px;
+      font-size:19px;background:#fff;color:#5b7a8c;border:3px solid #cdeaf7;box-shadow:0 3px 0 rgba(0,0,0,.08);">
+      ⚪ กรรมการ (ไม่ร่วมแข่งขัน)
+    </button>
   </div>
 </div>
 
@@ -169,7 +177,8 @@
       <li>กิจกรรมที่ส่งเข้ามาจะอยู่ในสถานะ <b>"รอตรวจสอบ"</b> ก่อนนับคะแนน</li>
       <li>สมาชิกคนอื่น (ยกเว้นคนในสีเดียวกัน) สามารถกด <b>อนุมัติ/ไม่อนุมัติ</b> กิจกรรมได้ เพื่อความโปร่งใสและยุติธรรม</li>
       <li>คะแนนรวมของทีมจะนับเฉพาะกิจกรรมที่ <b>อนุมัติแล้ว</b> เท่านั้น</li>
-      <li>ระยะเวลาการแข่งขัน: <b>1 – 27 สิงหาคม 2026</b></li>
+      <li>ระยะเวลาการแข่งขัน: <b>1 – 27 สิงหาคม 2026</b> — กิจกรรมที่ทำนอกช่วงนี้จะไม่ถูกนับคะแนน แม้จะส่งและอนุมัติได้ตามปกติ</li>
+      <li>มีบทบาท <b>กรรมการ (สีขาว)</b> สำหรับเข้าดูและช่วยตรวจสอบกิจกรรม โดยผลของกรรมการจะไม่ถูกนำมารวมแข่งกับ 4 สีหลัก</li>
       <li>เลือกสีทีมได้เพียงครั้งเดียว หากต้องการเปลี่ยนสีต้องแจ้งแอดมิน</li>
     </ul>
     <button class="modal-close" id="closeRules">เข้าใจแล้ว</button>
@@ -236,7 +245,7 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click', ()=> switchView(btn.dataset.view));
 });
 
-document.querySelectorAll('#view-colorpick .color-pick button').forEach(btn=>{
+document.querySelectorAll('#view-colorpick .color-pick button, #view-colorpick button.ขาว').forEach(btn=>{
   btn.addEventListener('click', async ()=>{
     try{
       await callApi('apiSetColor', {lineUserId: currentUser.lineUserId, color: btn.dataset.color});
@@ -332,6 +341,7 @@ async function loadPending(){
           <span class="meta">${new Date(a.activityDate).toLocaleDateString('th-TH')}</span>
         </div>
         <div style="margin-top:6px;"><b>${a.distanceMeters} ม.</b></div>
+        ${!a.willCount ? `<div class="not-counted">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>` : ''}
         <img class="thumb" src="${a.imageUrl}">
         ${a.canApprove ? `
           <div class="row" style="margin-top:12px;gap:8px;">
@@ -372,6 +382,7 @@ async function loadHistory(){
           <span class="status-tag ${a.status}">${a.status === 'approved' ? 'อนุมัติแล้ว' : a.status === 'rejected' ? 'ไม่อนุมัติ' : 'รอตรวจสอบ'}</span>
         </div>
         <div style="margin-top:6px;"><b>${a.distanceMeters} ม.</b></div>
+        ${!a.willCount ? `<div class="not-counted">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>` : ''}
         <img class="thumb" src="${a.imageUrl}">
       </div>`).join('');
   }catch(e){ el.innerHTML = '<div class="empty">โหลดไม่สำเร็จ</div>'; }
@@ -391,6 +402,7 @@ async function loadAdmin(){
           <option value="เหลือง" ${u.color==='เหลือง'?'selected':''}>เหลือง</option>
           <option value="เขียว" ${u.color==='เขียว'?'selected':''}>เขียว</option>
           <option value="น้ำเงิน" ${u.color==='น้ำเงิน'?'selected':''}>น้ำเงิน</option>
+          <option value="ขาว" ${u.color==='ขาว'?'selected':''}>⚪ ขาว (กรรมการ)</option>
         </select>
       </div>`).join('');
     el.querySelectorAll('.colorSelect').forEach(sel=>{
