@@ -583,9 +583,19 @@ function openPendingDetail(id){
       ` : `<div class="not-counted" style="background:#ffe6e6;color:#c93c3c;margin-top:12px;display:block;">⚠️ ไม่อัพโหลดรูปหลักฐาน แนะนำ ไม่อนุมัติ</div>`}
     </div>
     ${a.canApprove ? `
-      <div class="row" style="margin-top:16px;gap:8px;">
+      <div class="row" style="margin-top:16px;gap:8px;" id="approveRejectRow">
         <button class="btn-approve btn-sm" id="modalApproveBtn" style="flex:1;">✅ อนุมัติ</button>
         <button class="btn-reject btn-sm" id="modalRejectBtn" style="flex:1;">✖ ไม่อนุมัติ</button>
+      </div>
+      <div id="rejectReasonArea" style="display:none;margin-top:16px;">
+        <label style="margin-top:0;">เหตุผลที่ไม่อนุมัติ (ถ้ามี)</label>
+        <textarea id="rejectReasonInput" rows="3" placeholder="เช่น รูปไม่ชัด, ระยะทางดูผิดปกติ"
+          style="width:100%;padding:12px;border:3px solid var(--border);border-radius:14px;font-size:17px;
+          font-family:inherit;margin-top:6px;resize:vertical;"></textarea>
+        <div class="row" style="margin-top:12px;gap:8px;">
+          <button class="btn-reject btn-sm" id="confirmRejectBtn" style="flex:1;">✖ ยืนยันไม่อนุมัติ</button>
+          <button class="btn-ghost btn-sm" id="cancelRejectBtn" style="flex:1;">ยกเลิก</button>
+        </div>
       </div>` : `<div class="meta" style="margin-top:12px;">คุณไม่สามารถอนุมัติกิจกรรมสีเดียวกับตนเองได้</div>`}
   `;
   modal.classList.add('show');
@@ -608,6 +618,11 @@ function openPendingDetail(id){
   if(a.canApprove){
     const approveBtn = document.getElementById('modalApproveBtn');
     const rejectBtn = document.getElementById('modalRejectBtn');
+    const approveRejectRow = document.getElementById('approveRejectRow');
+    const rejectReasonArea = document.getElementById('rejectReasonArea');
+    const confirmRejectBtn = document.getElementById('confirmRejectBtn');
+    const cancelRejectBtn = document.getElementById('cancelRejectBtn');
+
     const setBtnsLoading = (on) => {
       approveBtn.disabled = on; rejectBtn.disabled = on;
       approveBtn.style.opacity = rejectBtn.style.opacity = on ? '0.6' : '1';
@@ -622,15 +637,30 @@ function openPendingDetail(id){
         loadPending();
       }catch(err){ showToast('ไม่สำเร็จ: ' + err.message); setBtnsLoading(false); approveBtn.innerHTML = '✅ อนุมัติ'; }
     });
-    rejectBtn.addEventListener('click', async ()=>{
-      setBtnsLoading(true);
-      rejectBtn.innerHTML = '<span class="btn-spinner"></span> กำลังบันทึก...';
+
+    // กด "ไม่อนุมัติ" ครั้งแรก แค่เปิดช่องกรอกเหตุผล ยังไม่ยิง API
+    rejectBtn.addEventListener('click', ()=>{
+      approveRejectRow.style.display = 'none';
+      rejectReasonArea.style.display = 'block';
+    });
+    cancelRejectBtn.addEventListener('click', ()=>{
+      rejectReasonArea.style.display = 'none';
+      approveRejectRow.style.display = 'flex';
+    });
+    confirmRejectBtn.addEventListener('click', async ()=>{
+      const reason = document.getElementById('rejectReasonInput').value.trim();
+      confirmRejectBtn.disabled = true; cancelRejectBtn.disabled = true;
+      confirmRejectBtn.innerHTML = '<span class="btn-spinner"></span> กำลังบันทึก...';
       try{
-        await callApi('apiRejectActivity', {lineUserId: currentUser.lineUserId, activityId: id});
+        await callApi('apiRejectActivity', {lineUserId: currentUser.lineUserId, activityId: id, reason});
         showToast('ปฏิเสธแล้ว');
         modal.classList.remove('show');
         loadPending();
-      }catch(err){ showToast('ไม่สำเร็จ: ' + err.message); setBtnsLoading(false); rejectBtn.innerHTML = '✖ ไม่อนุมัติ'; }
+      }catch(err){
+        showToast('ไม่สำเร็จ: ' + err.message);
+        confirmRejectBtn.disabled = false; cancelRejectBtn.disabled = false;
+        confirmRejectBtn.innerHTML = '✖ ยืนยันไม่อนุมัติ';
+      }
     });
   }
 }
@@ -681,6 +711,13 @@ async function loadHistory(){
             ${a.approvedByPicture ? `<img class="avatar-sm" src="${a.approvedByPicture}">` : ''}
             <b style="font-size:15px;">${a.approvedByName || '-'}</b>
           </div>` : ''}
+        ${a.status === 'rejected' ? `
+          <div class="row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+            <span class="meta">ไม่อนุมัติโดย</span>
+            ${a.approvedByPicture ? `<img class="avatar-sm" src="${a.approvedByPicture}">` : ''}
+            <b style="font-size:15px;">${a.approvedByName || '-'}</b>
+          </div>
+          ${a.rejectReason ? `<div class="meta" style="margin-top:6px;font-size:14px;">เหตุผล: ${a.rejectReason}</div>` : ''}` : ''}
       </div>`;
     }).join('');
   }catch(e){ el.innerHTML = '<div class="empty">โหลดไม่สำเร็จ</div>'; }
