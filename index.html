@@ -187,12 +187,6 @@
 
   <!-- ADMIN -->
   <div class="view" id="view-admin">
-    <div class="card">
-      <b>🔄 ย้ายข้อมูลเก่าจาก Google Sheet เข้า Firestore</b>
-      <div class="meta" style="margin-top:6px;">กดครั้งเดียวตอนย้ายระบบ ไม่ต้องกดซ้ำถ้าทำสำเร็จแล้ว</div>
-      <button class="btn-ghost btn-sm" id="migrateBtn" style="width:100%;margin-top:12px;">เริ่ม Migrate ข้อมูล</button>
-      <div id="migrateStatus" class="meta" style="margin-top:8px;"></div>
-    </div>
     <div class="card"><b>จัดการสีผู้ใช้ (Admin)</b></div>
     <div id="adminList"></div>
   </div>
@@ -590,64 +584,6 @@ function callApi(fnName, params){
   if(!handler) return Promise.reject(new Error('unknown_function_' + fnName));
   return handler(params || {});
 }
-
-// ------------------------------------------------------------
-// MIGRATION TOOL — ดึงข้อมูลเก่าจาก Google Sheet (ผ่าน Apps Script) มาใส่ Firestore
-// ใช้ครั้งเดียวตอนย้ายระบบ ต้องแก้ MIGRATE_KEY ให้ตรงกับที่ตั้งไว้ใน Code.gs
-// ------------------------------------------------------------
-const MIGRATE_KEY = 'let-me-migrate-2026';
-
-document.getElementById('migrateBtn').addEventListener('click', async ()=>{
-  const btn = document.getElementById('migrateBtn');
-  const status = document.getElementById('migrateStatus');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="btn-spinner" style="border-top-color:var(--accent);border-color:rgba(0,0,0,.15);"></span> กำลัง migrate...';
-  status.textContent = '';
-  try{
-    status.textContent = 'กำลังดึงข้อมูล Users จาก Sheet...';
-    const users = await callGasApi('exportUsers', { migrateKey: MIGRATE_KEY });
-    status.textContent = `พบ ${users.length} users กำลังเขียนเข้า Firestore...`;
-    for(const u of users){
-      await db.collection('users').doc(String(u.lineUserId)).set({
-        displayName: u.displayName || '',
-        pictureUrl: u.pictureUrl || '',
-        color: u.color || '',
-        createdAt: u.createdAt || new Date().toISOString()
-      });
-    }
-
-    status.textContent = 'กำลังดึงข้อมูล Activities จาก Sheet...';
-    const acts = await callGasApi('exportActivities', { migrateKey: MIGRATE_KEY });
-    status.textContent = `พบ ${acts.length} กิจกรรม กำลังเขียนเข้า Firestore...`;
-    let i = 0;
-    for(const a of acts){
-      await db.collection('activities').doc(String(a.id)).set({
-        lineUserId: String(a.lineUserId),
-        displayName: a.displayName || '',
-        color: a.color || '',
-        activityDate: a.activityDate || '',
-        distanceMeters: Number(a.distanceMeters || 0),
-        imageFileId: a.imageFileId || '',
-        imageUrl: a.imageUrl || '',
-        status: a.status || 'pending',
-        approvedBy: a.approvedBy || '',
-        approvedAt: a.approvedAt || '',
-        rejectReason: a.rejectReason || '',
-        createdAt: a.createdAt || new Date().toISOString()
-      });
-      i++;
-      status.textContent = `เขียนกิจกรรมแล้ว ${i}/${acts.length}`;
-    }
-
-    status.textContent = `✅ Migrate สำเร็จ! Users ${users.length} คน, กิจกรรม ${acts.length} รายการ`;
-    showToast('Migrate สำเร็จ');
-  }catch(e){
-    status.textContent = '❌ เกิดข้อผิดพลาด: ' + e.message;
-    showToast('Migrate ไม่สำเร็จ: ' + e.message);
-  }
-  btn.disabled = false;
-  btn.innerHTML = 'เริ่ม Migrate ข้อมูล';
-});
 
 function switchView(name){
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
