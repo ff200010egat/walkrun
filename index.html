@@ -5,6 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Run-Walk Challenge</title>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyBwN-dcfOO-uIA3WH5bdum2IOd--xvE1Gg",
+    authDomain: "walkrunmmsc.firebaseapp.com",
+    projectId: "walkrunmmsc",
+    storageBucket: "walkrunmmsc.firebasestorage.app",
+    messagingSenderId: "720374870853",
+    appId: "1:720374870853:web:9169485dc8b1ce10f6c42c"
+  };
+  firebase.initializeApp(firebaseConfig);
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -174,6 +187,12 @@
 
   <!-- ADMIN -->
   <div class="view" id="view-admin">
+    <div class="card">
+      <b>🔄 ย้ายข้อมูลเก่าจาก Google Sheet เข้า Firestore</b>
+      <div class="meta" style="margin-top:6px;">กดครั้งเดียวตอนย้ายระบบ ไม่ต้องกดซ้ำถ้าทำสำเร็จแล้ว</div>
+      <button class="btn-ghost btn-sm" id="migrateBtn" style="width:100%;margin-top:12px;">เริ่ม Migrate ข้อมูล</button>
+      <div id="migrateStatus" class="meta" style="margin-top:8px;"></div>
+    </div>
     <div class="card"><b>จัดการสีผู้ใช้ (Admin)</b></div>
     <div id="adminList"></div>
   </div>
@@ -251,7 +270,15 @@
 <script>
 // ตั้งค่า 2 บรรทัดนี้ให้ตรงกับของคุณ:
 const LIFF_ID = "2010724958-KTUm5Swh"; // LIFF ID จาก LINE Developers Console
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxwNXdrYdkc1JoS7IV2KyMdiFqN_-XIeDaggpu3DpeFp8Z04Z0rHhqxR5Z-qsGrOnydxg/exec"; // Web app URL จาก Deploy
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxwNXdrYdkc1JoS7IV2KyMdiFqN_-XIeDaggpu3DpeFp8Z04Z0rHhqxR5Z-qsGrOnydxg/exec"; // ใช้แค่สำหรับอัปโหลดรูป + migrate ข้อมูลเก่า
+
+const TEAM_COLORS = ['แดง', 'เหลือง', 'เขียว', 'น้ำเงิน'];
+const JUDGE_COLOR = 'ขาว';
+const ALL_COLORS = TEAM_COLORS.concat([JUDGE_COLOR]);
+const COMPETITION_START = new Date('2026-08-01T00:00:00+07:00');
+const COMPETITION_END   = new Date('2026-08-27T23:59:59+07:00');
+
+const db = firebase.firestore();
 
 let currentUser = null;
 
@@ -273,23 +300,13 @@ function showToast(msg){
   setTimeout(()=> t.style.display='none', 2200);
 }
 
-// หน้านี้เป็นหน้าเว็บทั่วไป (โฮสต์นอก GAS) จึงใช้ fetch ยิงไปที่ GAS Web App ตรงๆ ได้
-function callApi(fnName, params){
-  const actionMap = {
-    apiGetOrCreateUser: 'getOrCreateUser',
-    apiSetColor: 'setColor',
-    apiAdminSetColor: 'adminSetColor',
-    apiAddActivity: 'addActivity',
-    apiListPending: 'listPending',
-    apiApproveActivity: 'approveActivity',
-    apiRejectActivity: 'rejectActivity',
-    apiMyActivities: 'myActivities',
-    apiMyTotalMeters: 'myTotalMeters',
-    apiScoreboard: 'scoreboard',
-    apiAdminListUsers: 'adminListUsers',
-    apiColorDetail: 'colorDetail'
-  };
-  const action = actionMap[fnName] || fnName;
+function isWithinCompetitionPeriod(activityDate){
+  const d = new Date(activityDate);
+  return d.getTime() >= COMPETITION_START.getTime() && d.getTime() <= COMPETITION_END.getTime();
+}
+
+// เรียก Apps Script เฉพาะตอนอัปโหลดรูป (Drive ต้องใช้ server credential)
+function callGasApi(action, params){
   return fetch(SCRIPT_URL, {
     method: 'POST',
     body: JSON.stringify(Object.assign({ action }, params))
@@ -298,6 +315,339 @@ function callApi(fnName, params){
     return res.data;
   });
 }
+
+// ------------------------------------------------------------
+// FIRESTORE DATA LAYER — แทนที่ apiXxx เดิมที่เคยอยู่บน Apps Script/Sheets
+// ------------------------------------------------------------
+async function isAdminFS(lineUserId){
+  const snap = await db.collection('admins').doc(lineUserId).get();
+  return snap.exists;
+}
+
+async function computeUserTotalMetersFS(lineUserId){
+  const snap = await db.collection('activities')
+    .where('lineUserId', '==', lineUserId)
+    .where('status', '==', 'approved')
+    .get();
+  let total = 0;
+  snap.forEach(doc=>{
+    const a = doc.data();
+    if(isWithinCompetitionPeriod(a.activityDate)) total += Number(a.distanceMeters || 0);
+  });
+  return total;
+}
+
+const firestoreHandlers = {
+  apiGetOrCreateUser: async (p) => {
+    const ref = db.collection('users').doc(p.lineUserId);
+    const snap = await ref.get();
+    let user;
+    if(!snap.exists){
+      user = { displayName: p.displayName || '', pictureUrl: p.pictureUrl || '', color: '', createdAt: new Date().toISOString() };
+      await ref.set(user);
+    } else {
+      user = snap.data();
+      const updates = {};
+      if(p.displayName && p.displayName !== user.displayName) updates.displayName = p.displayName;
+      if(p.pictureUrl && p.pictureUrl !== user.pictureUrl) updates.pictureUrl = p.pictureUrl;
+      if(Object.keys(updates).length){ await ref.update(updates); Object.assign(user, updates); }
+    }
+    const isAdmin = await isAdminFS(p.lineUserId);
+    const totalMeters = await computeUserTotalMetersFS(p.lineUserId);
+    return {
+      lineUserId: p.lineUserId, displayName: user.displayName, pictureUrl: user.pictureUrl, color: user.color,
+      isAdmin, totalMeters,
+      competition: { start: COMPETITION_START.toISOString(), end: COMPETITION_END.toISOString() },
+      colors: TEAM_COLORS, judgeColor: JUDGE_COLOR
+    };
+  },
+
+  apiSetColor: async (p) => {
+    if(ALL_COLORS.indexOf(p.color) === -1) throw new Error('invalid_color');
+    const ref = db.collection('users').doc(p.lineUserId);
+    const snap = await ref.get();
+    if(!snap.exists) throw new Error('user_not_found');
+    if(snap.data().color) throw new Error('color_already_set');
+    await ref.update({ color: p.color });
+    return { color: p.color };
+  },
+
+  apiAdminSetColor: async (p) => {
+    if(!(await isAdminFS(p.adminLineUserId))) throw new Error('not_admin');
+    if(ALL_COLORS.indexOf(p.color) === -1) throw new Error('invalid_color');
+    const ref = db.collection('users').doc(p.targetLineUserId);
+    const snap = await ref.get();
+    if(!snap.exists) throw new Error('user_not_found');
+    await ref.update({ color: p.color });
+
+    // retag กิจกรรมเก่าทั้งหมดของ user คนนี้ให้เป็นสีใหม่
+    const actsSnap = await db.collection('activities').where('lineUserId', '==', p.targetLineUserId).get();
+    const batch = db.batch();
+    let count = 0;
+    actsSnap.forEach(doc=>{
+      if(doc.data().color !== p.color){ batch.update(doc.ref, { color: p.color }); count++; }
+    });
+    if(count > 0) await batch.commit();
+    return { color: p.color, updatedActivityCount: count };
+  },
+
+  apiAddActivity: async (p) => {
+    const userSnap = await db.collection('users').doc(p.lineUserId).get();
+    if(!userSnap.exists) throw new Error('user_not_found');
+    const user = userSnap.data();
+    if(!user.color) throw new Error('color_not_set');
+
+    const distance = Number(p.distanceMeters);
+    if(!isFinite(distance) || distance <= 0) throw new Error('invalid_distance');
+    const actDate = new Date(p.activityDate);
+    if(isNaN(actDate.getTime())) throw new Error('invalid_date');
+
+    // อัปโหลดรูปผ่าน Apps Script (Drive ต้องใช้ server credential)
+    const uploadResult = await callGasApi('uploadImage', {
+      lineUserId: p.lineUserId,
+      imageBase64: p.imageBase64,
+      imageMimeType: p.imageMimeType
+    });
+
+    const docRef = await db.collection('activities').add({
+      lineUserId: p.lineUserId,
+      displayName: user.displayName,
+      color: user.color,
+      activityDate: actDate.toISOString(),
+      distanceMeters: distance,
+      imageFileId: uploadResult.imageFileId,
+      imageUrl: uploadResult.imageUrl,
+      status: 'pending',
+      approvedBy: '',
+      approvedAt: '',
+      rejectReason: '',
+      createdAt: new Date().toISOString()
+    });
+    return { id: docRef.id, status: 'pending' };
+  },
+
+  apiListPending: async (p) => {
+    const currentUserSnap = await db.collection('users').doc(p.lineUserId).get();
+    const myColor = currentUserSnap.exists ? currentUserSnap.data().color : null;
+    const isJudge = myColor === JUDGE_COLOR;
+
+    const [pendingSnap, usersSnap] = await Promise.all([
+      db.collection('activities').where('status', '==', 'pending').get(),
+      db.collection('users').get()
+    ]);
+    const pictureByUserId = {};
+    usersSnap.forEach(doc=>{ pictureByUserId[doc.id] = doc.data().pictureUrl; });
+
+    const list = [];
+    pendingSnap.forEach(doc=>{
+      const a = doc.data();
+      list.push({
+        id: doc.id,
+        displayName: a.displayName,
+        pictureUrl: pictureByUserId[a.lineUserId] || '',
+        color: a.color,
+        activityDate: a.activityDate,
+        distanceMeters: a.distanceMeters,
+        imageUrl: a.imageUrl,
+        createdAt: a.createdAt,
+        canApprove: isJudge || (String(a.lineUserId) !== String(p.lineUserId) && a.color !== myColor),
+        willCount: isWithinCompetitionPeriod(a.activityDate) && TEAM_COLORS.indexOf(a.color) !== -1
+      });
+    });
+    return list;
+  },
+
+  apiApproveActivity: async (p) => {
+    const ref = db.collection('activities').doc(p.activityId);
+    const snap = await ref.get();
+    if(!snap.exists) throw new Error('activity_not_found');
+    const act = snap.data();
+    if(act.status !== 'pending') throw new Error('already_processed');
+
+    const approverSnap = await db.collection('users').doc(p.lineUserId).get();
+    if(!approverSnap.exists) throw new Error('user_not_found');
+    const approver = approverSnap.data();
+    const isJudge = approver.color === JUDGE_COLOR;
+    if(!isJudge){
+      if(approver.color === act.color) throw new Error('cannot_approve_own_color');
+      if(String(act.lineUserId) === String(p.lineUserId)) throw new Error('cannot_approve_own_activity');
+    }
+
+    await ref.update({ status: 'approved', approvedBy: p.lineUserId, approvedAt: new Date().toISOString() });
+    return { status: 'approved' };
+  },
+
+  apiRejectActivity: async (p) => {
+    const ref = db.collection('activities').doc(p.activityId);
+    const snap = await ref.get();
+    if(!snap.exists) throw new Error('activity_not_found');
+    const act = snap.data();
+    if(act.status !== 'pending') throw new Error('already_processed');
+
+    const approverSnap = await db.collection('users').doc(p.lineUserId).get();
+    if(!approverSnap.exists) throw new Error('user_not_found');
+    const approver = approverSnap.data();
+    const isJudge = approver.color === JUDGE_COLOR;
+    if(!isJudge){
+      if(approver.color === act.color) throw new Error('cannot_reject_own_color');
+      if(String(act.lineUserId) === String(p.lineUserId)) throw new Error('cannot_reject_own_activity');
+    }
+
+    await ref.update({
+      status: 'rejected', approvedBy: p.lineUserId, approvedAt: new Date().toISOString(),
+      rejectReason: p.reason || ''
+    });
+    return { status: 'rejected' };
+  },
+
+  apiMyActivities: async (p) => {
+    const [actsSnap, usersSnap] = await Promise.all([
+      db.collection('activities').where('lineUserId', '==', p.lineUserId).get(),
+      db.collection('users').get()
+    ]);
+    const userByLineId = {};
+    usersSnap.forEach(doc=>{ userByLineId[doc.id] = doc.data(); });
+
+    const list = [];
+    actsSnap.forEach(doc=>{
+      const a = doc.data();
+      const approver = a.approvedBy ? userByLineId[a.approvedBy] : null;
+      list.push({
+        id: doc.id,
+        activityDate: a.activityDate,
+        distanceMeters: a.distanceMeters,
+        imageUrl: a.imageUrl,
+        status: a.status,
+        createdAt: a.createdAt,
+        willCount: isWithinCompetitionPeriod(a.activityDate) && TEAM_COLORS.indexOf(a.color) !== -1,
+        approvedByName: approver ? approver.displayName : (a.approvedBy || ''),
+        approvedByPicture: approver ? approver.pictureUrl : '',
+        rejectReason: a.rejectReason || ''
+      });
+    });
+    list.sort((a,b)=> new Date(b.activityDate) - new Date(a.activityDate) || new Date(b.createdAt) - new Date(a.createdAt));
+    return list;
+  },
+
+  apiMyTotalMeters: async (p) => {
+    return { totalMeters: await computeUserTotalMetersFS(p.lineUserId) };
+  },
+
+  apiScoreboard: async () => {
+    const snap = await db.collection('activities').where('status', '==', 'approved').get();
+    const totals = {}; TEAM_COLORS.forEach(c => totals[c] = 0);
+    snap.forEach(doc=>{
+      const a = doc.data();
+      if(isWithinCompetitionPeriod(a.activityDate) && TEAM_COLORS.indexOf(a.color) !== -1){
+        totals[a.color] = (totals[a.color] || 0) + Number(a.distanceMeters || 0);
+      }
+    });
+    const board = TEAM_COLORS.map(c => ({ color: c, totalMeters: totals[c] }));
+    board.sort((a,b)=> b.totalMeters - a.totalMeters);
+    return { board, updatedAt: new Date().toISOString() };
+  },
+
+  apiAdminListUsers: async (p) => {
+    if(!(await isAdminFS(p.adminLineUserId))) throw new Error('not_admin');
+    const snap = await db.collection('users').get();
+    const list = [];
+    snap.forEach(doc=>{
+      const u = doc.data();
+      list.push({ lineUserId: doc.id, displayName: u.displayName, color: u.color });
+    });
+    return list;
+  },
+
+  apiColorDetail: async (p) => {
+    const [usersSnap, actsSnap] = await Promise.all([
+      db.collection('users').where('color', '==', p.color).get(),
+      db.collection('activities').where('color', '==', p.color).where('status', '==', 'approved').get()
+    ]);
+    const totalsByUser = {};
+    const memberMeta = {};
+    usersSnap.forEach(doc=>{
+      totalsByUser[doc.id] = 0;
+      memberMeta[doc.id] = { displayName: doc.data().displayName, pictureUrl: doc.data().pictureUrl };
+    });
+    actsSnap.forEach(doc=>{
+      const a = doc.data();
+      if(isWithinCompetitionPeriod(a.activityDate) && totalsByUser.hasOwnProperty(a.lineUserId)){
+        totalsByUser[a.lineUserId] += Number(a.distanceMeters || 0);
+      }
+    });
+    const members = Object.keys(memberMeta).map(uid => ({
+      lineUserId: uid, displayName: memberMeta[uid].displayName, pictureUrl: memberMeta[uid].pictureUrl,
+      totalMeters: totalsByUser[uid] || 0
+    }));
+    members.sort((a,b)=> b.totalMeters - a.totalMeters);
+    return { color: p.color, members };
+  }
+};
+
+// callApi ตอนนี้เรียก Firestore โดยตรงแทน Apps Script (ยกเว้นตอนอัปโหลดรูปที่ยังผ่าน Apps Script อยู่ภายใน apiAddActivity)
+function callApi(fnName, params){
+  const handler = firestoreHandlers[fnName];
+  if(!handler) return Promise.reject(new Error('unknown_function_' + fnName));
+  return handler(params || {});
+}
+
+// ------------------------------------------------------------
+// MIGRATION TOOL — ดึงข้อมูลเก่าจาก Google Sheet (ผ่าน Apps Script) มาใส่ Firestore
+// ใช้ครั้งเดียวตอนย้ายระบบ ต้องแก้ MIGRATE_KEY ให้ตรงกับที่ตั้งไว้ใน Code.gs
+// ------------------------------------------------------------
+const MIGRATE_KEY = 'let-me-migrate-2026';
+
+document.getElementById('migrateBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('migrateBtn');
+  const status = document.getElementById('migrateStatus');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-spinner" style="border-top-color:var(--accent);border-color:rgba(0,0,0,.15);"></span> กำลัง migrate...';
+  status.textContent = '';
+  try{
+    status.textContent = 'กำลังดึงข้อมูล Users จาก Sheet...';
+    const users = await callGasApi('exportUsers', { migrateKey: MIGRATE_KEY });
+    status.textContent = `พบ ${users.length} users กำลังเขียนเข้า Firestore...`;
+    for(const u of users){
+      await db.collection('users').doc(String(u.lineUserId)).set({
+        displayName: u.displayName || '',
+        pictureUrl: u.pictureUrl || '',
+        color: u.color || '',
+        createdAt: u.createdAt || new Date().toISOString()
+      });
+    }
+
+    status.textContent = 'กำลังดึงข้อมูล Activities จาก Sheet...';
+    const acts = await callGasApi('exportActivities', { migrateKey: MIGRATE_KEY });
+    status.textContent = `พบ ${acts.length} กิจกรรม กำลังเขียนเข้า Firestore...`;
+    let i = 0;
+    for(const a of acts){
+      await db.collection('activities').doc(String(a.id)).set({
+        lineUserId: String(a.lineUserId),
+        displayName: a.displayName || '',
+        color: a.color || '',
+        activityDate: a.activityDate || '',
+        distanceMeters: Number(a.distanceMeters || 0),
+        imageFileId: a.imageFileId || '',
+        imageUrl: a.imageUrl || '',
+        status: a.status || 'pending',
+        approvedBy: a.approvedBy || '',
+        approvedAt: a.approvedAt || '',
+        rejectReason: a.rejectReason || '',
+        createdAt: a.createdAt || new Date().toISOString()
+      });
+      i++;
+      status.textContent = `เขียนกิจกรรมแล้ว ${i}/${acts.length}`;
+    }
+
+    status.textContent = `✅ Migrate สำเร็จ! Users ${users.length} คน, กิจกรรม ${acts.length} รายการ`;
+    showToast('Migrate สำเร็จ');
+  }catch(e){
+    status.textContent = '❌ เกิดข้อผิดพลาด: ' + e.message;
+    showToast('Migrate ไม่สำเร็จ: ' + e.message);
+  }
+  btn.disabled = false;
+  btn.innerHTML = 'เริ่ม Migrate ข้อมูล';
+});
 
 function switchView(name){
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
