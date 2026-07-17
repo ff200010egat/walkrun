@@ -59,7 +59,18 @@
   input[type=date], input[type=number], input[type=file]{
     width:100%;padding:16px 14px;border:3px solid var(--border);border-radius:14px;
     font-size:19px;background:#fff;margin-top:6px;font-family:inherit;color:var(--text);}
-  input[type=file]{padding:14px;font-size:16px;}
+  input[type=file]{padding:14px;font-size:16px;font-family:inherit;color:var(--text);}
+  input[type=file]::file-selector-button,
+  input[type=file]::-webkit-file-upload-button{
+    font-family:inherit;font-size:15px;font-weight:700;color:#fff;background:var(--accent);
+    border:none;border-radius:10px;padding:10px 16px;margin-right:14px;cursor:pointer;}
+  input[type=file]::file-selector-button:hover,
+  input[type=file]::-webkit-file-upload-button:hover{background:var(--accent-dark);}
+  select{font-family:inherit;font-size:16px;font-weight:600;color:var(--text);
+    padding:10px 14px;border:3px solid var(--border);border-radius:12px;background:#fff;
+    -webkit-appearance:none;appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b7a8c' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;}
   label{font-size:17px;color:var(--text);display:block;margin-top:18px;font-weight:700;}
   .hint{font-size:15px;color:var(--muted);margin-top:4px;font-weight:500;}
   .km-preview{font-size:17px;color:var(--accent-dark);font-weight:700;margin-top:6px;min-height:24px;}
@@ -236,7 +247,7 @@
       <li>สมาชิกคนอื่น (ยกเว้นคนในสีเดียวกัน) สามารถกด <b>อนุมัติ/ไม่อนุมัติ</b> กิจกรรมได้ เพื่อความโปร่งใสและยุติธรรม</li>
       <li>คะแนนรวมของทีมจะนับเฉพาะกิจกรรมที่ <b>อนุมัติแล้ว</b> เท่านั้น</li>
       <li>ระยะเวลาการแข่งขัน: <b>1 – 27 สิงหาคม 2026</b> — กิจกรรมที่ทำนอกช่วงนี้จะไม่ถูกนับคะแนน แม้จะส่งและอนุมัติได้ตามปกติ</li>
-      <li>มีบทบาท <b>กรรมการ (สีขาว)</b> สำหรับเข้าดูและช่วยตรวจสอบกิจกรรม โดยผลของกรรมการจะไม่ถูกนำมารวมแข่งกับ 4 สีหลัก</li>
+      <li><b>กรรมการ (สีขาว)</b> สำหรับเข้าดูและช่วยตรวจสอบกิจกรรม</li>
       <li>เลือกสีทีมได้เพียงครั้งเดียว หากต้องการเปลี่ยนสีต้องแจ้งแอดมิน</li>
     </ul>
     <button class="modal-close" id="closeRules">เข้าใจแล้ว</button>
@@ -567,11 +578,11 @@ const firestoreHandlers = {
       dailyTotals[dateStr][a.color] = (dailyTotals[dateStr][a.color] || 0) + Number(a.distanceMeters || 0);
     });
 
-    const today = new Date();
-    const endDate = today < COMPETITION_END ? today : COMPETITION_END;
+    // ใช้ช่วงเต็มของการแข่งขันเสมอ (1-27 ส.ค.) ไม่ยึดตาม "วันนี้จริง" เพราะกิจกรรมที่กรอก
+    // อาจมีวันที่อยู่ในช่วงแข่งขันได้ แม้วันปัจจุบันจริงจะยังไม่ถึงช่วงนั้นก็ตาม (เช่นตอนทดสอบระบบ)
     const days = [];
     let cursor = new Date(COMPETITION_START);
-    while(cursor <= endDate){
+    while(cursor <= COMPETITION_END){
       days.push(cursor.toISOString().slice(0, 10));
       cursor.setDate(cursor.getDate() + 1);
     }
@@ -591,7 +602,7 @@ const firestoreHandlers = {
     const list = [];
     snap.forEach(doc=>{
       const u = doc.data();
-      list.push({ lineUserId: doc.id, displayName: u.displayName, color: u.color });
+      list.push({ lineUserId: doc.id, displayName: u.displayName, color: u.color, pictureUrl: u.pictureUrl });
     });
     return list;
   },
@@ -711,7 +722,7 @@ function renderUserLine(){
   }
   const el = document.getElementById('userLine');
   const totalText = (currentUser.color && currentUser.color !== 'ขาว')
-    ? ` · ระยะสะสม ${Math.round(currentUser.totalMeters || 0)} ม.`
+    ? ` · ระยะสะสม ${Math.round(currentUser.totalMeters || 0).toLocaleString()} ม.`
     : '';
   el.innerHTML = currentUser.displayName +
     (currentUser.color ? ` <span class="badge ${currentUser.color}">${colorLabel(currentUser.color)}</span>` : '') +
@@ -745,7 +756,7 @@ function skeletonScoreboard(){
 function renderProgressChart(days){
   const container = document.getElementById('progressChart');
   if(!days || days.length < 2){
-    container.innerHTML = '<div class="meta">ยังไม่มีข้อมูลพอวาดกราฟ (ต้องมีกิจกรรมที่อนุมัติแล้วอย่างน้อย 2 วัน)</div>';
+    container.innerHTML = '';
     return;
   }
   const W = 400, H = 180, padL = 36, padR = 10, padT = 10, padB = 24;
@@ -892,7 +903,9 @@ document.getElementById('actDistance').addEventListener('input', (e)=>{
   const val = parseFloat(e.target.value);
   const preview = document.getElementById('kmPreview');
   if(!isNaN(val) && val > 0){
-    preview.textContent = '(' + (val/1000).toFixed(2).replace(/\.?0+$/,'') + ' กิโลเมตร)';
+    const km = val/1000;
+    const kmStr = km.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    preview.textContent = '(' + kmStr + ' กิโลเมตร)';
   } else {
     preview.textContent = '';
   }
@@ -993,7 +1006,7 @@ async function loadPending(){
         </div>
         <div class="row between" style="margin-top:6px;">
           <span class="meta">${new Date(a.activityDate).toLocaleDateString('th-TH')}</span>
-          <b>${a.distanceMeters} ม.</b>
+          <b>${Number(a.distanceMeters).toLocaleString()} ม.</b>
         </div>
         ${!a.willCount ? `<div class="not-counted" style="margin-top:8px;">⚠️ นอกช่วงแข่งขัน</div>` : ''}
       </div>`).join('');
@@ -1019,7 +1032,7 @@ function openPendingDetail(id){
       </div>
       <span class="meta">${new Date(a.activityDate).toLocaleDateString('th-TH')}</span>
     </div>
-    <div style="margin-top:8px;font-size:22px;"><b>${a.distanceMeters} ม.</b></div>
+    <div style="margin-top:8px;font-size:22px;"><b>${Number(a.distanceMeters).toLocaleString()} ม.</b></div>
     ${!a.willCount ? `<div class="not-counted">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>` : ''}
     <div id="pendingImgArea">
       ${a.imageUrl ? `
@@ -1147,7 +1160,7 @@ async function loadHistory(){
         </div>
         <div class="row between" style="margin-top:6px;align-items:flex-start;">
           <div>
-            <b>${a.distanceMeters} ม.</b>
+            <b>${Number(a.distanceMeters).toLocaleString()} ม.</b>
             ${!a.willCount ? `<div class="not-counted" style="margin-top:8px;">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>` : ''}
           </div>
           ${imgSrc ? `<img class="thumb-history" src="${imgSrc}" style="cursor:zoom-in;" onclick="openLightbox('${imgSrc}')" onerror="this.style.display='none';">` : ''}
@@ -1177,7 +1190,10 @@ async function loadAdmin(){
     const users = await callApi('apiAdminListUsers', {adminLineUserId: currentUser.lineUserId});
     el.innerHTML = users.map(u => `
       <div class="card row between" data-uid="${u.lineUserId}">
-        <div>${u.displayName}<div class="meta">${u.color ? colorLabel(u.color) : 'ยังไม่เลือกสี'}</div></div>
+        <div class="row">
+          ${u.pictureUrl ? `<img class="avatar-sm" src="${u.pictureUrl}">` : ''}
+          <div>${u.displayName}<div class="meta">${u.color ? colorLabel(u.color) : 'ยังไม่เลือกสี'}</div></div>
+        </div>
         <select class="colorSelect">
           <option value="">--</option>
           <option value="แดง" ${u.color==='แดง'?'selected':''}>แดง</option>
