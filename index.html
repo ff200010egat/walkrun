@@ -123,6 +123,15 @@
   .member-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);}
   .member-row:last-child{border-bottom:none;}
   .member-rank{font-size:18px;font-weight:800;color:var(--muted);width:26px;flex-shrink:0;}
+  .skeleton{background:linear-gradient(90deg, #eef3f7 25%, #f8fbfd 37%, #eef3f7 63%);
+    background-size:400% 100%;animation:shimmer 1.4s ease infinite;border-radius:8px;}
+  @keyframes shimmer{0%{background-position:100% 50%;}100%{background-position:0% 50%;}}
+  .skel-card{background:#fff;border:3px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px;}
+  .skel-line{height:16px;margin-bottom:10px;}
+  .pull-indicator{text-align:center;font-size:14px;color:var(--muted);font-weight:700;
+    height:0;overflow:hidden;transition:height .2s;opacity:0;}
+  .pull-indicator.visible{height:32px;opacity:1;}
+  .pull-indicator.ready{color:var(--accent-dark);}
   .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:60;display:none;
     align-items:center;justify-content:center;padding:20px;}
   .lightbox.show{display:flex;}
@@ -151,8 +160,13 @@
 
   <!-- HOME / SCOREBOARD -->
   <div class="view active" id="view-home">
+    <div id="pullIndicator" class="pull-indicator">↓ ดึงลงเพื่อรีเฟรช</div>
     <div class="card">
       <div class="row between"><b>สรุประยะสะสมทีม</b><span class="meta" id="periodText"></span></div>
+    </div>
+    <div class="card" id="chartCard">
+      <b style="font-size:16px;">📈 ความคืบหน้าตลอดการแข่งขัน</b>
+      <div id="progressChart" style="margin-top:12px;"></div>
     </div>
     <div id="scoreboard"></div>
   </div>
@@ -222,7 +236,7 @@
       <li>สมาชิกคนอื่น (ยกเว้นคนในสีเดียวกัน) สามารถกด <b>อนุมัติ/ไม่อนุมัติ</b> กิจกรรมได้ เพื่อความโปร่งใสและยุติธรรม</li>
       <li>คะแนนรวมของทีมจะนับเฉพาะกิจกรรมที่ <b>อนุมัติแล้ว</b> เท่านั้น</li>
       <li>ระยะเวลาการแข่งขัน: <b>1 – 27 สิงหาคม 2026</b> — กิจกรรมที่ทำนอกช่วงนี้จะไม่ถูกนับคะแนน แม้จะส่งและอนุมัติได้ตามปกติ</li>
-      <li>บทบาท <b>กรรมการ (สีขาว)</b> สำหรับเข้าดูและช่วยตรวจสอบกิจกรรม </li>
+      <li>มีบทบาท <b>กรรมการ (สีขาว)</b> สำหรับเข้าดูและช่วยตรวจสอบกิจกรรม โดยผลของกรรมการจะไม่ถูกนำมารวมแข่งกับ 4 สีหลัก</li>
       <li>เลือกสีทีมได้เพียงครั้งเดียว หากต้องการเปลี่ยนสีต้องแจ้งแอดมิน</li>
     </ul>
     <button class="modal-close" id="closeRules">เข้าใจแล้ว</button>
@@ -541,6 +555,36 @@ const firestoreHandlers = {
     return { board, updatedAt: new Date().toISOString() };
   },
 
+  // ระยะสะสมรายวันของแต่ละทีม ใช้วาดกราฟเส้นความคืบหน้าตลอดการแข่งขัน
+  apiScoreboardHistory: async () => {
+    const snap = await db.collection('activities').where('status', '==', 'approved').get();
+    const dailyTotals = {}; // 'YYYY-MM-DD' -> { color: metersThatDay }
+    snap.forEach(doc=>{
+      const a = doc.data();
+      if(!isWithinCompetitionPeriod(a.activityDate) || TEAM_COLORS.indexOf(a.color) === -1) return;
+      const dateStr = String(a.activityDate).slice(0, 10);
+      if(!dailyTotals[dateStr]) dailyTotals[dateStr] = {};
+      dailyTotals[dateStr][a.color] = (dailyTotals[dateStr][a.color] || 0) + Number(a.distanceMeters || 0);
+    });
+
+    const today = new Date();
+    const endDate = today < COMPETITION_END ? today : COMPETITION_END;
+    const days = [];
+    let cursor = new Date(COMPETITION_START);
+    while(cursor <= endDate){
+      days.push(cursor.toISOString().slice(0, 10));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    const cumulative = {}; TEAM_COLORS.forEach(c => cumulative[c] = 0);
+    const series = days.map(dateStr => {
+      const dayData = dailyTotals[dateStr] || {};
+      TEAM_COLORS.forEach(c => { cumulative[c] += (dayData[c] || 0); });
+      return { date: dateStr, values: Object.assign({}, cumulative) };
+    });
+    return { days: series };
+  },
+
   apiAdminListUsers: async (p) => {
     if(!(await isAdminFS(p.adminLineUserId))) throw new Error('not_admin');
     const snap = await db.collection('users').get();
@@ -599,6 +643,50 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click', ()=> switchView(btn.dataset.view));
 });
 
+// ------------------------------------------------------------
+// PULL-TO-REFRESH สำหรับหน้าสรุปคะแนน
+// ------------------------------------------------------------
+(function setupPullToRefresh(){
+  const homeView = document.getElementById('view-home');
+  const indicator = document.getElementById('pullIndicator');
+  const THRESHOLD = 70;
+  let startY = 0, pulling = false, currentPull = 0;
+
+  homeView.addEventListener('touchstart', (e)=>{
+    if(homeView.scrollTop <= 0 && window.scrollY <= 0){
+      startY = e.touches[0].clientY;
+      pulling = true;
+    }
+  }, { passive: true });
+
+  homeView.addEventListener('touchmove', (e)=>{
+    if(!pulling) return;
+    currentPull = e.touches[0].clientY - startY;
+    if(currentPull > 0){
+      const capped = Math.min(currentPull, 120);
+      indicator.classList.add('visible');
+      indicator.style.height = Math.min(capped, 40) + 'px';
+      indicator.textContent = capped > THRESHOLD ? '↑ ปล่อยเพื่อรีเฟรช' : '↓ ดึงลงเพื่อรีเฟรช';
+      indicator.classList.toggle('ready', capped > THRESHOLD);
+    }
+  }, { passive: true });
+
+  homeView.addEventListener('touchend', ()=>{
+    if(pulling && currentPull > THRESHOLD){
+      indicator.textContent = '🔄 กำลังรีเฟรช...';
+      loadScoreboard().finally(()=>{
+        indicator.classList.remove('visible', 'ready');
+        indicator.style.height = '0';
+      });
+    } else {
+      indicator.classList.remove('visible', 'ready');
+      indicator.style.height = '0';
+    }
+    pulling = false;
+    currentPull = 0;
+  });
+})();
+
 document.querySelectorAll('#view-colorpick .color-pick button, #view-colorpick button.ขาว').forEach(btn=>{
   btn.addEventListener('click', async ()=>{
     try{
@@ -643,12 +731,73 @@ const COLOR_BAR = {
   'แดง': 'var(--red)', 'เหลือง': 'var(--yellow)', 'เขียว': 'var(--green)', 'น้ำเงิน': 'var(--blue)'
 };
 
+function skeletonScoreboard(){
+  return Array(4).fill(0).map(()=>`
+    <div class="skel-card">
+      <div class="row between">
+        <div class="skeleton skel-line" style="width:100px;"></div>
+        <div class="skeleton skel-line" style="width:60px;"></div>
+      </div>
+      <div class="skeleton skel-line" style="width:100%;height:14px;margin-top:8px;"></div>
+    </div>`).join('');
+}
+
+function renderProgressChart(days){
+  const container = document.getElementById('progressChart');
+  if(!days || days.length < 2){
+    container.innerHTML = '<div class="meta">ยังไม่มีข้อมูลพอวาดกราฟ (ต้องมีกิจกรรมที่อนุมัติแล้วอย่างน้อย 2 วัน)</div>';
+    return;
+  }
+  const W = 400, H = 180, padL = 36, padR = 10, padT = 10, padB = 24;
+  const maxVal = Math.max(1, ...days.map(d => Math.max(...TEAM_COLORS.map(c => d.values[c] || 0))));
+  const xStep = (W - padL - padR) / (days.length - 1);
+  const yScale = (v) => (H - padB) - (v / maxVal) * (H - padT - padB);
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;font-family:inherit;">`;
+
+  // grid lines + y-axis labels (0, ครึ่งหนึ่ง, สูงสุด)
+  [0, 0.5, 1].forEach(f=>{
+    const y = yScale(maxVal * f);
+    svg += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#eef3f7" stroke-width="1"/>`;
+    svg += `<text x="${padL-6}" y="${y+4}" font-size="9" fill="#5b7a8c" text-anchor="end">${(maxVal*f/1000).toFixed(0)}k</text>`;
+  });
+
+  // เส้นของแต่ละทีม
+  TEAM_COLORS.forEach(color=>{
+    const points = days.map((d,i) => `${(padL + i*xStep).toFixed(1)},${yScale(d.values[color]||0).toFixed(1)}`).join(' ');
+    svg += `<polyline points="${points}" fill="none" stroke="${COLOR_BAR[color]}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>`;
+  });
+
+  // x-axis labels: วันแรก, กลาง, วันสุดท้าย
+  [0, Math.floor((days.length-1)/2), days.length-1].forEach(i=>{
+    const d = days[i];
+    const x = padL + i*xStep;
+    const label = d.date.slice(8,10) + '/' + d.date.slice(5,7);
+    svg += `<text x="${x}" y="${H-6}" font-size="9" fill="#5b7a8c" text-anchor="middle">${label}</text>`;
+  });
+
+  svg += `</svg>`;
+
+  // legend
+  const legend = TEAM_COLORS.map(c => `
+    <span style="display:inline-flex;align-items:center;gap:4px;margin-right:14px;font-size:12px;color:var(--muted);">
+      <span class="dot ${c}" style="width:10px;height:10px;"></span>${c}
+    </span>`).join('');
+
+  container.innerHTML = svg + `<div style="margin-top:6px;">${legend}</div>`;
+}
+
 async function loadScoreboard(){
   const el = document.getElementById('scoreboard');
-  el.innerHTML = '<div class="empty">กำลังโหลด...</div>';
+  el.innerHTML = skeletonScoreboard();
+  document.getElementById('progressChart').innerHTML = '<div class="skeleton" style="width:100%;height:140px;"></div>';
   try{
-    const data = await callApi('apiScoreboard', {});
+    const [data, historyData] = await Promise.all([
+      callApi('apiScoreboard', {}),
+      callApi('apiScoreboardHistory', {})
+    ]);
     document.getElementById('periodText').textContent = '1–27 ส.ค. 2026';
+    renderProgressChart(historyData.days);
     const leaderMeters = data.board.length ? data.board[0].totalMeters : 0;
     const maxMeters = Math.max(leaderMeters, 1); // กันหารด้วยศูนย์
 
@@ -810,9 +959,21 @@ async function refreshPendingCount(){
 
 let pendingCache = {};
 
+function skeletonList(n){
+  return Array(n || 3).fill(0).map(()=>`
+    <div class="skel-card">
+      <div class="row between">
+        <div class="row"><div class="skeleton" style="width:32px;height:32px;border-radius:50%;"></div>
+          <div class="skeleton skel-line" style="width:90px;margin:0;"></div></div>
+        <div class="skeleton skel-line" style="width:20px;margin:0;"></div>
+      </div>
+      <div class="skeleton skel-line" style="width:70%;margin-top:10px;"></div>
+    </div>`).join('');
+}
+
 async function loadPending(){
   const el = document.getElementById('pendingList');
-  el.innerHTML = '<div class="empty">กำลังโหลด...</div>';
+  el.innerHTML = skeletonList(3);
   try{
     const list = await callApi('apiListPending', {lineUserId: currentUser.lineUserId});
     setPendingBadge(list.length);
@@ -972,7 +1133,7 @@ document.getElementById('pendingDetailModal').addEventListener('click', (e)=>{
 
 async function loadHistory(){
   const el = document.getElementById('historyList');
-  el.innerHTML = '<div class="empty">กำลังโหลด...</div>';
+  el.innerHTML = skeletonList(3);
   try{
     const list = await callApi('apiMyActivities', {lineUserId: currentUser.lineUserId});
     if(list.length === 0){ el.innerHTML = '<div class="empty">ยังไม่มีกิจกรรม</div>'; return; }
