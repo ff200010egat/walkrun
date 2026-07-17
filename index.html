@@ -209,7 +209,7 @@
       <li>สมาชิกคนอื่น (ยกเว้นคนในสีเดียวกัน) สามารถกด <b>อนุมัติ/ไม่อนุมัติ</b> กิจกรรมได้ เพื่อความโปร่งใสและยุติธรรม</li>
       <li>คะแนนรวมของทีมจะนับเฉพาะกิจกรรมที่ <b>อนุมัติแล้ว</b> เท่านั้น</li>
       <li>ระยะเวลาการแข่งขัน: <b>1 – 27 สิงหาคม 2026</b> — กิจกรรมที่ทำนอกช่วงนี้จะไม่ถูกนับคะแนน แม้จะส่งและอนุมัติได้ตามปกติ</li>
-      <li>มีบทบาท <b>กรรมการ (สีขาว)</b> สำหรับเข้าดูและช่วยตรวจสอบกิจกรรม </li>
+      <li>มีบทบาท <b>กรรมการ (สีขาว)</b> สำหรับเข้าดูและช่วยตรวจสอบกิจกรรม โดยผลของกรรมการจะไม่ถูกนำมารวมแข่งกับ 4 สีหลัก</li>
       <li>เลือกสีทีมได้เพียงครั้งเดียว หากต้องการเปลี่ยนสีต้องแจ้งแอดมิน</li>
     </ul>
     <button class="modal-close" id="closeRules">เข้าใจแล้ว</button>
@@ -370,7 +370,7 @@ async function loadScoreboard(){
       const pct = Math.max(3, Math.round((b.totalMeters / maxMeters) * 100));
       const gap = leaderMeters - b.totalMeters;
       const gapText = i === 0
-        ? '🔥 กำลังนำอยู่ '
+        ? '🔥 กำลังนำอยู่!'
         : `ตามหลังผู้นำ ${(gap/1000).toFixed(2)} กม.`;
       return `
       <div class="card color-row" data-color="${b.color}" style="cursor:pointer;background:${COLOR_BG[b.color]};">
@@ -733,7 +733,7 @@ function withTimeout(promise, ms, label){
 
 async function init(){
   setDebug('กำลังโหลด... (1/4 liff.init)');
-  await withTimeout(liff.init({ liffId: LIFF_ID }), 15000, 'liff.init');
+  await withTimeout(liff.init({ liffId: LIFF_ID, withLoginOnExternalBrowser: true }), 15000, 'liff.init');
 
   setDebug('กำลังโหลด... (2/4 เช็คสถานะ login)');
   if(!liff.isLoggedIn()){
