@@ -548,6 +548,7 @@ const firestoreHandlers = {
         status: a.status,
         createdAt: a.createdAt,
         willCount: isWithinCompetitionPeriod(a.activityDate) && TEAM_COLORS.indexOf(a.color) !== -1,
+        isJudgeActivity: a.color === JUDGE_COLOR,
         approvedByName: approver ? approver.displayName : (a.approvedBy || ''),
         approvedByPicture: approver ? approver.pictureUrl : '',
         rejectReason: a.rejectReason || ''
@@ -936,7 +937,9 @@ async function openUserActivities(lineUserId, displayName){
         <div class="row between" style="margin-top:6px;align-items:flex-start;">
           <div>
             <b style="font-size:15px;">${Number(a.distanceMeters).toLocaleString()} ม.</b>
-            ${!a.willCount ? `<div class="not-counted" style="margin-top:6px;font-size:12px;padding:4px 8px;">⚠️ นอกช่วงแข่งขัน</div>` : ''}
+            ${!a.willCount ? (a.isJudgeActivity
+              ? `<div class="not-counted" style="margin-top:6px;font-size:12px;padding:4px 8px;">🎖️ กิจกรรมกรรมการ ไม่นับคะแนนทีม</div>`
+              : `<div class="not-counted" style="margin-top:6px;font-size:12px;padding:4px 8px;">⚠️ นอกช่วงแข่งขัน</div>`) : ''}
           </div>
           ${imgSrc ? `<img class="thumb-history" src="${imgSrc}" style="cursor:zoom-in;width:56px;height:56px;" onclick="openLightbox('${imgSrc}')" onerror="this.style.display='none';">` : ''}
         </div>
@@ -1070,7 +1073,9 @@ async function loadPending(){
           <span class="meta">${new Date(a.activityDate).toLocaleDateString('th-TH')}</span>
           <b>${Number(a.distanceMeters).toLocaleString()} ม.</b>
         </div>
-        ${!a.willCount ? `<div class="not-counted" style="margin-top:8px;">⚠️ นอกช่วงแข่งขัน</div>` : ''}
+        ${!a.willCount ? (a.color === 'ขาว'
+          ? `<div class="not-counted" style="margin-top:8px;">🎖️ กิจกรรมกรรมการ ไม่นับคะแนนทีม</div>`
+          : `<div class="not-counted" style="margin-top:8px;">⚠️ นอกช่วงแข่งขัน</div>`) : ''}
       </div>`).join('');
 
     el.querySelectorAll('.pending-row').forEach(row=>{
@@ -1095,7 +1100,9 @@ function openPendingDetail(id){
       <span class="meta">${new Date(a.activityDate).toLocaleDateString('th-TH')}</span>
     </div>
     <div style="margin-top:8px;font-size:22px;"><b>${Number(a.distanceMeters).toLocaleString()} ม.</b></div>
-    ${!a.willCount ? `<div class="not-counted">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>` : ''}
+    ${!a.willCount ? (a.color === 'ขาว'
+      ? `<div class="not-counted">🎖️ กิจกรรมของกรรมการ ไม่นับคะแนนทีม</div>`
+      : `<div class="not-counted">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>`) : ''}
     <div id="pendingImgArea">
       ${a.imageUrl ? `
         <div class="spinner" id="pendingImgSpinner"></div>
@@ -1223,7 +1230,9 @@ async function loadHistory(){
         <div class="row between" style="margin-top:6px;align-items:flex-start;">
           <div>
             <b>${Number(a.distanceMeters).toLocaleString()} ม.</b>
-            ${!a.willCount ? `<div class="not-counted" style="margin-top:8px;">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>` : ''}
+            ${!a.willCount ? (a.isJudgeActivity
+              ? `<div class="not-counted" style="margin-top:8px;">🎖️ กิจกรรมกรรมการ ไม่นับคะแนนทีม</div>`
+              : `<div class="not-counted" style="margin-top:8px;">⚠️ นอกช่วงแข่งขัน จะไม่นับคะแนน</div>`) : ''}
           </div>
           ${imgSrc ? `<img class="thumb-history" src="${imgSrc}" style="cursor:zoom-in;" onclick="openLightbox('${imgSrc}')" onerror="this.style.display='none';">` : ''}
         </div>
