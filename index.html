@@ -263,6 +263,15 @@
   </div>
 </div>
 
+<!-- USER ACTIVITIES HISTORY MODAL -->
+<div class="modal-overlay" id="userActivitiesModal">
+  <div class="modal-box">
+    <h2 id="userActivitiesTitle" style="font-size:18px;">📋 กิจกรรมของ</h2>
+    <div id="userActivitiesBody"><div class="spinner"></div></div>
+    <button class="modal-close" id="closeUserActivities" style="background:transparent;color:var(--muted);border:2px solid var(--border);">ปิด</button>
+  </div>
+</div>
+
 <!-- PENDING ACTIVITY DETAIL MODAL -->
 <div class="modal-overlay" id="pendingDetailModal">
   <div class="modal-box">
@@ -881,12 +890,16 @@ async function openColorDetail(color){
       return;
     }
     body.innerHTML = data.members.map((m,i) => `
-      <div class="member-row">
+      <div class="member-row member-clickable" data-uid="${m.lineUserId}" data-name="${m.displayName}" style="cursor:pointer;">
         <div class="member-rank">${i+1}</div>
         ${m.pictureUrl ? `<img class="avatar-sm" src="${m.pictureUrl}">` : ''}
         <div style="flex:1;">${m.displayName}</div>
         <b>${(m.totalMeters/1000).toFixed(2)} กม.</b>
+        <span style="color:var(--muted);font-size:18px;margin-left:4px;">›</span>
       </div>`).join('');
+    body.querySelectorAll('.member-clickable').forEach(row=>{
+      row.addEventListener('click', ()=> openUserActivities(row.dataset.uid, row.dataset.name));
+    });
   }catch(e){
     body.innerHTML = '<div class="empty">โหลดไม่สำเร็จ</div>';
   }
@@ -897,6 +910,55 @@ document.getElementById('closeColorDetail').addEventListener('click', ()=>{
 });
 document.getElementById('colorDetailModal').addEventListener('click', (e)=>{
   if(e.target.id === 'colorDetailModal') e.target.classList.remove('show');
+});
+
+async function openUserActivities(lineUserId, displayName){
+  const modal = document.getElementById('userActivitiesModal');
+  const body = document.getElementById('userActivitiesBody');
+  document.getElementById('userActivitiesTitle').textContent = '📋 กิจกรรมของ ' + displayName;
+  body.innerHTML = '<div class="spinner"></div>';
+  modal.classList.add('show');
+  try{
+    const list = await callApi('apiMyActivities', { lineUserId });
+    if(list.length === 0){
+      body.innerHTML = '<div class="empty">ยังไม่มีกิจกรรม</div>';
+      return;
+    }
+    body.innerHTML = list.map(a => {
+      const imgSrc = normalizeDriveImageUrl(a.imageUrl);
+      const statusLabel = a.status === 'approved' ? 'อนุมัติแล้ว' : a.status === 'rejected' ? 'ไม่อนุมัติ' : 'รอตรวจสอบ';
+      return `
+      <div style="padding:12px 0;border-bottom:1px solid var(--border);font-size:14px;">
+        <div class="row between">
+          <b style="font-size:15px;">${new Date(a.activityDate).toLocaleDateString('th-TH')}</b>
+          <span class="status-tag ${a.status}" style="font-size:12px;">${statusLabel}</span>
+        </div>
+        <div class="row between" style="margin-top:6px;align-items:flex-start;">
+          <div>
+            <b style="font-size:15px;">${Number(a.distanceMeters).toLocaleString()} ม.</b>
+            ${!a.willCount ? `<div class="not-counted" style="margin-top:6px;font-size:12px;padding:4px 8px;">⚠️ นอกช่วงแข่งขัน</div>` : ''}
+          </div>
+          ${imgSrc ? `<img class="thumb-history" src="${imgSrc}" style="cursor:zoom-in;width:56px;height:56px;" onclick="openLightbox('${imgSrc}')" onerror="this.style.display='none';">` : ''}
+        </div>
+        ${(a.status === 'approved' || a.status === 'rejected') ? `
+          <div class="row" style="margin-top:8px;">
+            <span class="meta" style="font-size:12px;">${a.status === 'approved' ? 'อนุมัติโดย' : 'ไม่อนุมัติโดย'}</span>
+            ${a.approvedByPicture ? `<img class="avatar-sm" src="${a.approvedByPicture}" style="width:22px;height:22px;">` : ''}
+            <b style="font-size:13px;">${a.approvedByName || '-'}</b>
+          </div>
+          ${a.status === 'rejected' && a.rejectReason ? `<div class="meta" style="margin-top:4px;font-size:12px;">เหตุผล: ${a.rejectReason}</div>` : ''}` : ''}
+      </div>`;
+    }).join('');
+  }catch(e){
+    body.innerHTML = '<div class="empty">โหลดไม่สำเร็จ</div>';
+  }
+}
+
+document.getElementById('closeUserActivities').addEventListener('click', ()=>{
+  document.getElementById('userActivitiesModal').classList.remove('show');
+});
+document.getElementById('userActivitiesModal').addEventListener('click', (e)=>{
+  if(e.target.id === 'userActivitiesModal') e.target.classList.remove('show');
 });
 
 document.getElementById('actDistance').addEventListener('input', (e)=>{
