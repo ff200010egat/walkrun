@@ -825,13 +825,13 @@ async function loadScoreboard(){
     el.innerHTML = data.board.map((b,i)=>{
       const pct = Math.max(3, Math.round((b.totalMeters / maxMeters) * 100));
       const gap = leaderMeters - b.totalMeters;
-      const gapText = i === 0
-        ? '🔥 กำลังนำอยู่!'
-        : `ตามหลังผู้นำ ${(gap/1000).toFixed(2)} กม.`;
+      const gapText = leaderMeters === 0
+        ? 'ยังไม่มีผลงาน'
+        : (i === 0 ? '🔥 กำลังนำอยู่!' : `ตามหลังผู้นำ ${(gap/1000).toFixed(2)} กม.`);
       return `
       <div class="card color-row" data-color="${b.color}" style="cursor:pointer;background:${COLOR_BG[b.color]};">
         <div class="row between">
-          <div class="row"><span class="rank medal-rank">${MEDAL[i] || (i+1)}</span>
+          <div class="row"><span class="rank medal-rank">${leaderMeters === 0 ? (i+1) : (MEDAL[i] || (i+1))}</span>
             <span class="dot ${b.color}"></span>&nbsp;<b>${b.color}</b></div>
           <div class="row" style="gap:10px;">
             <div class="score">${(b.totalMeters/1000).toFixed(2)} กม.</div>
